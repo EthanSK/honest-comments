@@ -26,6 +26,8 @@ Once you've read the manual, run the whole flow conversationally:
    own channel now that I'm logged in.
 4. Apply prompts/analyze.md to classify, dedupe, cluster, and rank the
    constructive criticism — ignoring praise and trolls.
-5. Deliver the ranked harsh-but-useful takes, then offer to go deeper.
+5. Ask how I want it first — a short summary, or the top N (you choose how
+   many) ranked — then deliver the harsh-but-useful takes that way, and offer
+   to go deeper.
 
 Be honest, not nice. Begin now by greeting me.

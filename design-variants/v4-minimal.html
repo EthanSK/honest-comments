@@ -416,19 +416,23 @@
             <!-- optional quiet eyebrow (kept minimal) -->
             <p class="eyebrow reveal">For YouTube creators · open source</p>
 
+            <!-- 2026-06-20 CHANGE: the tagline is now THE headline. The old
+                 "Your harshest fans, ranked." line + the separate subtitle were
+                 removed (owner: make the headline "Constructive criticism from
+                 your fans." with no subtitle under it). "your fans." kept in the
+                 quiet grey to preserve the hierarchy treatment. -->
             <h1 class="reveal">
-              Your harshest fans,<br />
-              <span class="quiet">ranked.</span>
+              Constructive criticism<br />
+              from <span class="quiet">your fans.</span>
             </h1>
 
-            <!-- THE tagline (verbatim) -->
-            <p class="hero__tagline reveal">Constructive criticism from your fans.</p>
-
-            <!-- one primary CTA max — scrolls to the prompt block -->
+            <!-- one primary CTA — "Copy prompt": copies the verbatim starter
+                 prompt to the clipboard (and scrolls to the prompt block) so the
+                 creator can paste it straight into Codex/Claude. id wired in JS. -->
             <div class="hero__actions reveal">
-              <a class="btn btn--primary" href="#prompt">
-                Get the prompt
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <a class="btn btn--primary" href="#prompt" id="heroCopyBtn">
+                <span class="hero-copy__t">Copy prompt</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </a>
             </div>
           </div>
@@ -470,8 +474,8 @@
                bolder, tracked); "as a creator" stays in the quiet grey style.
                Monochrome only — no new colour (YouTube red icon stays the
                single splash). Spans the full hero width beneath the 1·2·3. -->
-          <p class="hero__payoff reveal" aria-label="Grow as a creator">
-            <span class="hero__payoff-grow">GROW</span> as a creator.
+          <p class="hero__payoff reveal" aria-label="then Grow as a creator">
+            then <span class="hero__payoff-grow">GROW</span> as a creator.
           </p>
 
         </div>
@@ -530,7 +534,9 @@ Once you've read the manual, run the whole flow conversationally:
    own channel now that I'm logged in.
 4. Apply prompts/analyze.md to classify, dedupe, cluster, and rank the
    constructive criticism — ignoring praise and trolls.
-5. Deliver the ranked harsh-but-useful takes, then offer to go deeper.
+5. Ask how I want it first — a short summary, or the top N (you choose how
+   many) ranked — then deliver the harsh-but-useful takes that way, and offer
+   to go deeper.
 
 Be honest, not nice. Begin now by greeting me.</code></pre>
         </div>
@@ -556,26 +562,20 @@ Be honest, not nice. Begin now by greeting me.</code></pre>
     // Reads the prompt's .textContent (the browser already decoded &amp;&amp; → &&),
     // so the clipboard gets the VERBATIM starter prompt with real ampersands.
     (function () {
-      var btn = document.getElementById('copyBtn');
       var src = document.getElementById('promptSource');
-      if (!btn || !src) return;
+      if (!src) return;
 
-      btn.addEventListener('click', function () {
+      // Shared copy routine: copies the prompt's VERBATIM textContent. onDone is
+      // an optional per-button feedback callback. Used by BOTH the prompt-block
+      // copy button AND the hero "Copy prompt" CTA.
+      function copyPrompt(onDone) {
         var text = src.textContent;
-
-        function confirmCopied() {
-          btn.classList.add('is-done');
-          // revert the button to its idle "Copy" state after 2s
-          setTimeout(function () { btn.classList.remove('is-done'); }, 2000);
-        }
-
-        // Primary path: async Clipboard API (requires a secure-ish context).
+        function ok() { if (onDone) onDone(); }
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(confirmCopied).catch(fallbackCopy);
+          navigator.clipboard.writeText(text).then(ok).catch(fallbackCopy);
         } else {
           fallbackCopy();
         }
-
         // Fallback for file:// or older browsers: hidden textarea + execCommand.
         function fallbackCopy() {
           try {
@@ -588,12 +588,39 @@ Be honest, not nice. Begin now by greeting me.</code></pre>
             ta.select();
             document.execCommand('copy');
             document.body.removeChild(ta);
-            confirmCopied();
+            ok();
           } catch (e) {
             // last resort — do nothing visible rather than throw
           }
         }
-      });
+      }
+
+      // 1) The copy button inside the prompt block.
+      var btn = document.getElementById('copyBtn');
+      if (btn) {
+        btn.addEventListener('click', function () {
+          copyPrompt(function () {
+            btn.classList.add('is-done');
+            setTimeout(function () { btn.classList.remove('is-done'); }, 2000);
+          });
+        });
+      }
+
+      // 2) The hero "Copy prompt" CTA — copies AND scrolls to the prompt block
+      //    (so the creator sees what got copied). Briefly flips the label to
+      //    "Copied!" for feedback, then restores it.
+      var heroBtn = document.getElementById('heroCopyBtn');
+      if (heroBtn) {
+        var heroLabel = heroBtn.querySelector('.hero-copy__t');
+        var idle = heroLabel ? heroLabel.textContent : 'Copy prompt';
+        heroBtn.addEventListener('click', function () {
+          copyPrompt(function () {
+            if (heroLabel) heroLabel.textContent = 'Copied!';
+            setTimeout(function () { if (heroLabel) heroLabel.textContent = idle; }, 2000);
+          });
+          // let the default anchor jump to #prompt happen (no preventDefault)
+        });
+      }
     })();
 
     // ---- SCROLL REVEAL ----------------------------------------------

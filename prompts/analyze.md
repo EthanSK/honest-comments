@@ -10,7 +10,9 @@
     classify every comment 3 ways → throw away praise + trolls →
     dedupe + cluster the real criticism into themes →
     rank the themes by how many DISTINCT people raised them (+ severity/actionability) →
-    deliver a ranked, harsh-but-fair digest, each theme paired with a concrete fix.
+    ASK the creator HOW they want it (a short combined prose SUMMARY, or a ranked
+    TOP-N where they pick N) → deliver in THAT one shape, harsh-but-fair, each
+    problem paired with a concrete fix. Ask first; never dump both unprompted.
 
   The creator asked for HONEST. Do not soften the criticism into mush. But never
   editorialize cruelty — quote a troll only if they explicitly ask. Every count
@@ -255,9 +257,47 @@ Keep the top **3–7 themes**. Don't pad — if only 4 real themes exist, delive
 
 ---
 
-## 6. OUTPUT FORMAT — the ranked digest for the creator
+## 6. OUTPUT FORMAT — deliver in the shape the creator chooses
 
-Deliver conversationally, hardest-but-useful first. Lead with a one-line shape-of-it, then the ranked insights, then a framing line, then the drill-down menu.
+### 6.0 ASK FIRST — let the creator pick the delivery shape
+
+**Before you present ANY results, your FIRST move at delivery time is to ask the creator HOW they want the criticism delivered.** Do NOT dump a big ranked list unprompted, and do NOT produce both shapes at once — ask, wait for their answer, then deliver in the ONE shape they chose. Offer exactly two modes:
+
+- **(a) A short combined SUMMARY** — one or two paragraphs of flowing prose that synthesize the few most relevant themes into a readable narrative (§6A).
+- **(b) A ranked TOP-N** — the ranked insight cards, capped to a number **the creator names** (suggest **10** as the default if they don't have a number in mind) (§6B).
+
+Phrase the ask naturally and let them pick the N, e.g.:
+
+> "Want a quick summary of your most useful criticism, or should I pull the top 10 — or however many you'd like — ranked?"
+
+Whichever they choose, you deliver that shape and only that shape. After delivering, you still offer to go deeper / switch to the other format / pull all comments behind a theme (§6, step 8). They can always ask for the other mode afterwards — but you never pre-empt the choice by producing both.
+
+> **Both modes obey the SAME hard rules (§7).** Never fabricate. Distinct-commenter counts (per `author_channel_id`, blank → `"missing:"+comment_id`), NOT raw comment counts. Harsh-with-a-fixable-claim is constructive, not troll. Every problem is paired with a concrete fix. Every quoted comment is verbatim from `out/*.json`. The delivery shape changes; the grounding never relaxes.
+
+---
+
+### 6A. SUMMARY MODE — one or two prose paragraphs of the most relevant criticism
+
+When the creator picks the summary, write **1–2 short paragraphs of flowing prose** — "here's the gist of what your viewers think you should fix" — read in ~20 seconds, NOT a bullet/card list. It is a synthesis, in your own judgment, of the **few MOST relevant, most-acted-upon themes combined** (typically the top 2–4 by the §5 ranking), woven into a readable narrative.
+
+It must stay **100% grounded in the real data**, exactly like the ranked mode:
+- Cite **real distinct-commenter counts** (per §3 — distinct `author_channel_id`, blank → `"missing:"+comment_id`), real themes, and real likes. Never round up, never invent a count. When uncertain, undercount.
+- Pull the salient point from **real example phrasing** — you may weave a short **verbatim** quote or two from `out/classified_*.json` into the prose, but never paraphrase a comment into quotation marks and never fabricate one.
+- **Pair the key problems with concrete fixes** inside the prose (name the actual lever — gain/compressor/LUFS, cut the cold-open to <15s, add timestamps, bump the on-screen font, etc.). No naked criticism, even in summary form.
+
+The summary covers the handful of themes you judge most important, combined into one narrative — it does NOT enumerate every theme. Aim for the signal, not completeness.
+
+**Example shape (illustrative — numbers must be your real ones):**
+
+> The clearest signal is your audio: **11 different people** said your voice gets buried under the music (+340 likes between them) — one put it bluntly, _"had to max my volume and your voice still clips."_ Raise your voice gain, add a compressor targeting ~-14 LUFS, and duck the music ~12 dB under you and that whole complaint disappears. The next-loudest theme is pacing — **7 people** want you to the point faster (_"90 seconds of intro before the actual content"_); cut the cold-open under 15s and lead with the payoff promise. After that it tapers off into a handful of smaller asks (mobile code legibility, a couple of factual nitpicks) that are worth a look but nowhere near as loud.
+
+Then go to step 7 (framing line) and step 8 (offer to go deeper / switch to ranked).
+
+---
+
+### 6B. RANKED TOP-N MODE — the ranked insight cards, capped to the creator's N
+
+When the creator picks the ranked list, deliver the ranked insight cards below, **capped to the N they named** (default **10** if they didn't pick a number; if fewer than N real themes exist, deliver only the real ones — never pad to hit N). Deliver conversationally, hardest-but-useful first: lead with a one-line shape-of-it, then the ranked insights, then a framing line, then the drill-down menu.
 
 **Per insight, use exactly this shape:**
 
@@ -277,13 +317,13 @@ Each insight MUST carry:
 - **2–3 verbatim example comments** — real, unedited, lifted straight from `out/*.json`. Never paraphrase an example into quotes. Never invent one.
 - **a concrete suggested fix** — specific and doable, not "improve your audio." Name the actual lever (gain/compressor/LUFS target, cut intro to <15s, add timestamps to the description, bump the on-screen font / increase contrast, correct the fact at <timestamp>, add captions, etc.). Every problem MUST be paired with a fix.
 
-**Step 7 — closing framing line** (so it doesn't read as a pile-on). Use the real totals from `run_meta.json`:
+**Step 7 — closing framing line** (so it doesn't read as a pile-on). Applies to BOTH modes — append it after the summary prose OR after the ranked cards. Use the real totals from `run_meta.json`:
 > "That's the signal. For context: of 4,210 comments, ~3,100 were praise and ~260 were trolls I filtered out — so this is the ~850 that actually had a point, boiled down to 6 themes."
 
-**Step 8 — offer to go deeper:**
-> "Want me to pull every comment behind any of these themes? Compare your last 5 videos to see if one of these is getting worse? Or draft a pinned comment addressing the top issue?"
+**Step 8 — offer to go deeper (and to switch format).** After delivering in whichever shape they chose, offer to drill down AND to switch to the OTHER mode:
+> "Want me to pull every comment behind any of these themes? Switch to the full ranked top-10 (or back to a quick summary)? Compare your last 5 videos to see if one of these is getting worse? Or draft a pinned comment addressing the top issue?"
 
-Drill-downs you can offer: full verbatim dump for one theme, per-video trend, flip to "what people are LOVING" (bucket A) on request, or draft a response / community post / pinned comment.
+Drill-downs you can offer: **switch delivery shape** (summary ⇄ ranked top-N — they can re-pick N), full verbatim dump for one theme, per-video trend, flip to "what people are LOVING" (bucket A) on request, or draft a response / community post / pinned comment.
 
 ---
 

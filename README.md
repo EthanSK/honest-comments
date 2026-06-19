@@ -16,7 +16,7 @@ It runs entirely on *your* machine and *your* AI. You paste a tiny prompt into C
 
 **honest-comments has no servers and receives nothing from you** — there's no backend, no account, no honest-comments-hosted anything. To be precise about where your data *does* go (because "nothing leaves your machine" wouldn't be true): you **sign in to your own Google/YouTube account** via Google's standard OAuth login (the sign-in happens on Google's pages, and OAuth tokens are stored locally in `~/.honest-comments/`), your **comment requests go to Google's YouTube API** (that's how the comments get fetched), and the **comment text is processed by your own AI provider** — the Codex/Claude subscription you already use — to classify it, exactly like any other prompt you send them. honest-comments does have a registered Google OAuth identity (that's *its* name on the consent screen) — but that's just an app registration, **not a server and not a data path**: nothing routes through us. There's no third party in the middle that we run.
 
-What you get back: a ranked digest like _"Audio is too quiet — 11 different people said this (+340 likes). Fix: raise your voice gain, add a compressor, aim for ~-14 LUFS."_ The praise gets counted but skipped. The trolls get filtered out. You're left with the stuff that's harsh but worth acting on.
+What you get back, in whichever shape you ask for — a **quick prose summary** of your most useful criticism, or a **ranked top-N** (you pick how many) like _"Audio is too quiet — 11 different people said this (+340 likes). Fix: raise your voice gain, add a compressor, aim for ~-14 LUFS."_ The praise gets counted but skipped. The trolls get filtered out. You're left with the stuff that's harsh but worth acting on.
 
 ---
 
@@ -170,26 +170,31 @@ python3 scripts/fetch_comments.py --channel "@SomeCreator"
 
 3. **Cluster** the deduped claims into a small stable set of themes (Audio, Pacing/Length, Video/Lighting, Structure/Clarity, Factual Accuracy, etc.).
 
-4. **Rank** themes most-painful-first, weighting distinct-commenter count most heavily, then likes (silent agreement), then severity and actionability. Collapse each theme into one headline insight with a concrete fix.
+4. **Rank** themes most-painful-first, weighting distinct-commenter count most heavily, then likes (silent agreement), then severity and actionability. Collapse each theme into one headline insight with a concrete fix. Then (Step 5) **ask the creator whether they want a short combined prose summary or a ranked top-N (they pick N)** before presenting — don't dump both.
 
 Tell the creator what you're doing in one line: _"Sorting praise from trolls from the stuff you can actually use…"_
 
-### Step 5 — Deliver, then go deeper
+### Step 5 — Ask how they want it, then deliver, then go deeper
 
-Lead with a one-line shape-of-it, then the ranked insights, hardest-but-useful first. Per insight: theme + distinct-commenter count + total likes + severity, 2–3 **verbatim** example comments, and a concrete suggested fix. For example:
+**Ask first.** Before presenting anything, ask the creator HOW they want the criticism delivered — don't dump a big list unprompted, and don't produce both shapes at once. Offer two modes:
+
+> "Want a quick summary of your most useful criticism, or should I pull the top 10 — or however many you'd like — ranked?"
+
+- **Summary mode** — one or two short paragraphs of flowing prose synthesizing the few **most relevant, most-acted-upon** themes into a readable "here's the gist of what to fix" narrative. Still grounded in real distinct-commenter counts, real themes, and verbatim example phrasing, and still pairs the key problems with concrete fixes — just written as prose a human reads in ~20 seconds, not a card list.
+- **Ranked top-N mode** — the ranked insight cards, capped to the number the creator picks (suggest **10** by default). Per insight: theme + distinct-commenter count + total likes + severity, 2–3 **verbatim** example comments, and a concrete suggested fix. For example:
 
 > **#1 · Audio is too quiet / voice gets buried** — 11 people raised this (+340 likes). Severity: high.
 > _"Great info but I had to max my volume and your voice still clips."_
 > _"bg music way louder than you the whole video"_
 > **Fix:** Raise your voice gain and add a compressor; aim for ~-14 LUFS integrated. Duck the music ~12 dB under your voice.
 
-After the list, add a framing line so it doesn't feel like a pile-on:
+Deliver in whichever shape they chose (the full per-insight rules and the summary-mode definition both live in `prompts/analyze.md` §6). Then add a framing line so it doesn't feel like a pile-on:
 
 > "That's the signal. For context: of 4,210 comments, ~3,100 were praise and ~260 were trolls I filtered out — so this is the ~850 that actually had a point, boiled down to 6 themes."
 
-Then **offer to go deeper**:
+Then **offer to go deeper** (and to switch format):
 
-> "Want me to pull every comment behind any of these themes? Compare your last 5 videos to see if one of these is getting worse? Or draft a pinned comment addressing the top issue?"
+> "Want me to pull every comment behind any of these themes? Switch to the full ranked top-10 (or back to a quick summary)? Compare your last 5 videos to see if one of these is getting worse? Or draft a pinned comment addressing the top issue?"
 
 ---
 
