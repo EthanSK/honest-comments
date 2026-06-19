@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<!--
+  honest-comments — landing page
+  ================================
+  Static GitHub Pages site. Vanilla HTML/CSS/JS only — NO framework, NO build step.
+  Visual identity: dark "creator studio" palette, characterful display font (Fraunces)
+  paired with a clean grotesque body (Inter). The whole page is one long scroll with
+  tasteful reveal-on-scroll motion (see script.js + .reveal class in styles.css).
+
+  Page structure (top -> bottom):
+    1. Sticky nav
+    2. Hero — the pitch + the privacy promise
+    3. The three-step flow (THE centerpiece): Get an agent -> Get a key -> Paste prompt
+    4. "How it works" — BYO-agent / no backend / your subscription / open source
+    5. "What you get" — a mocked ranked-criticism output card
+    6. Screenshot placeholders (clearly labelled — real screenshots swapped in later)
+    7. Footer — GitHub repo + MIT
+
+  Anything marked SCREENSHOT PLACEHOLDER or LOGO PLACEHOLDER is intentional and meant
+  to be replaced with real assets later.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>honest-comments — your harshest fans, ranked</title>
+  <meta
+    name="description"
+    content="Find the genuinely useful criticism buried in your YouTube comments. No praise, no trolls — just the harsh truths worth hearing. Runs on your own Codex CLI or Claude Code; we never see your data."
+  />
+
+  <!-- Open Graph / social preview (placeholder image lives in assets/) -->
+  <meta property="og:title" content="honest-comments — your harshest fans, ranked" />
+  <meta
+    property="og:description"
+    content="The constructive criticism buried in your YouTube comments, ranked. BYO-agent. We see nothing."
+  />
+  <meta property="og:type" content="website" />
+
+  <!--
+    Fonts: Fraunces = the characterful display face (high-contrast, a bit editorial,
+    gives the page personality without being a novelty font). Inter = clean neutral body.
+    Preconnect first so the fonts don't block first paint noticeably.
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ============================================================= -->
+  <!-- STICKY NAV                                                    -->
+  <!-- ============================================================= -->
+  <header class="nav" id="nav">
+    <a class="nav__brand" href="#top" aria-label="honest-comments home">
+      <!-- Tiny inline logo mark: a speech bubble with a downward "rank" chevron -->
+      <svg class="nav__logo" viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M3 5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5v8a2.5 2.5 0 0 1-2.5 2.5H9l-4 4v-4H5.5A2.5 2.5 0 0 1 3 13.5z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          stroke-linejoin="round"
+        />
+        <path d="M8 8h8M8 11h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      </svg>
+      <span>honest-comments</span>
+    </a>
+
+    <nav class="nav__links" aria-label="Primary">
+      <a href="#steps">Get started</a>
+      <a href="#how">How it works</a>
+      <a href="#output">What you get</a>
+      <a class="nav__cta" href="https://github.com/EthanSK/honest-comments" target="_blank" rel="noopener">
+        GitHub
+      </a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <!-- ============================================================= -->
+    <!-- HERO                                                          -->
+    <!-- ============================================================= -->
+    <section class="hero">
+      <!-- soft radial glows sit behind the content (purely decorative, see CSS) -->
+      <div class="hero__glow hero__glow--a" aria-hidden="true"></div>
+      <div class="hero__glow hero__glow--b" aria-hidden="true"></div>
+
+      <div class="hero__inner container">
+        <p class="eyebrow reveal">For YouTube creators</p>
+
+        <h1 class="hero__title reveal">
+          The harsh truths<br />
+          <span class="hero__title-accent">worth hearing</span>,<br />
+          ranked.
+        </h1>
+
+        <p class="hero__sub reveal">
+          Somewhere under the praise and the trolls, a handful of comments are
+          telling you exactly what to fix. <strong>honest-comments</strong> digs them
+          out, dedupes them, and ranks them by how many people actually agree.
+        </p>
+
+        <!-- The privacy promise is the trust anchor — give it its own pill row -->
+        <div class="hero__promise reveal">
+          <span class="pill">
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="pill__icon">
+              <path d="M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+              <path d="m9 12 2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Runs on <strong>your</strong> Codex / Claude
+          </span>
+          <span class="pill">
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="pill__icon">
+              <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M8.5 12.5 11 15l4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            We never see your data
+          </span>
+          <span class="pill">
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="pill__icon">
+              <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            No backend, no sign-up
+          </span>
+        </div>
+
+        <div class="hero__actions reveal">
+          <a class="btn btn--primary" href="#steps">Start in 3 steps</a>
+          <a class="btn btn--ghost" href="#output">See a sample report</a>
+        </div>
+
+        <p class="hero__foot reveal">
+          Open source · MIT · BYO-agent · zero of your data leaves your machine
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- THE THREE-STEP FLOW (centerpiece)                             -->
+    <!-- ============================================================= -->
+    <section class="steps section" id="steps">
+      <div class="container">
+        <header class="section__head reveal">
+          <p class="eyebrow">Setup · about 3 minutes</p>
+          <h2 class="section__title">Three steps to honest feedback</h2>
+          <p class="section__lede">
+            You bring the agent and a free key. We bring the operating manual.
+            Nothing to install beyond a CLI you might already have.
+          </p>
+        </header>
+
+        <ol class="steps__list">
+          <!-- STEP 1 — get an agent -->
+          <li class="step reveal">
+            <div class="step__num">1</div>
+            <div class="step__body">
+              <h3 class="step__title">Get Codex CLI or Claude Code</h3>
+              <p class="step__text">
+                honest-comments runs <em>inside</em> an AI coding agent you control.
+                Pick whichever you already pay for — it does all the fetching and
+                analysis on your machine, using your subscription.
+              </p>
+
+              <!-- Two agent option cards, each with an inline LOGO PLACEHOLDER SVG -->
+              <div class="agent-grid">
+                <a
+                  class="agent-card"
+                  href="https://developers.openai.com/codex/cli/"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  <!--
+                    LOGO PLACEHOLDER — OpenAI / Codex.
+                    Replace this inline SVG with the official OpenAI mark when available.
+                    Kept monochrome so it inherits the card's text colour.
+                  -->
+                  <span class="agent-card__logo" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path
+                        d="M12 2.6a4.3 4.3 0 0 0-4.1 3 4.3 4.3 0 0 0-2.8 7.4A4.3 4.3 0 0 0 9 20.5a4.3 4.3 0 0 0 6 .9 4.3 4.3 0 0 0 2.8-7.4A4.3 4.3 0 0 0 15 6a4.3 4.3 0 0 0-3-3.4Z"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.4"
+                      />
+                      <path d="M12 8.4 15.4 10v3.4L12 15.4 8.6 13.4V10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+                    </svg>
+                  </span>
+                  <span class="agent-card__name">OpenAI Codex CLI</span>
+                  <span class="agent-card__hint">developers.openai.com →</span>
+                </a>
+
+                <a
+                  class="agent-card"
+                  href="https://www.anthropic.com/claude-code"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  <!--
+                    LOGO PLACEHOLDER — Anthropic / Claude.
+                    Replace with the official Anthropic "burst" mark when available.
+                  -->
+                  <span class="agent-card__logo" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <g stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                        <path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/>
+                      </g>
+                    </svg>
+                  </span>
+                  <span class="agent-card__name">Anthropic Claude Code</span>
+                  <span class="agent-card__hint">anthropic.com →</span>
+                </a>
+              </div>
+            </div>
+          </li>
+
+          <!-- STEP 2 — get a free YouTube API key -->
+          <li class="step reveal">
+            <div class="step__num">2</div>
+            <div class="step__body">
+              <h3 class="step__title">Get a free YouTube API key</h3>
+              <p class="step__text">
+                A plain Google Cloud API key (public data only — no OAuth, no consent
+                screen). It reads <em>public</em> comments on <em>public</em> videos and
+                stays on your machine. The agent walks you through it the first time, or
+                you can follow the README.
+              </p>
+
+              <!-- Mini checklist that mirrors the README walkthrough -->
+              <ul class="ticklist">
+                <li>Create a project in the Google Cloud console</li>
+                <li>Enable <strong>YouTube Data API v3</strong></li>
+                <li>Create an API key &amp; paste it to your agent</li>
+              </ul>
+
+              <a
+                class="inline-link"
+                href="https://github.com/EthanSK/honest-comments#step-1--get-a-free-youtube-data-api-key"
+                target="_blank"
+                rel="noopener"
+              >
+                Full key walkthrough in the README →
+              </a>
+            </div>
+          </li>
+
+          <!-- STEP 3 — paste the starter prompt -->
+          <li class="step reveal">
+            <div class="step__num">3</div>
+            <div class="step__body">
+              <h3 class="step__title">Paste this prompt</h3>
+              <p class="step__text">
+                Drop this into Codex CLI or Claude Code. It fetches the operating manual
+                and takes it from there — greeting you, helping with the key, fetching
+                comments, and delivering the ranked digest.
+              </p>
+
+              <!-- Copyable starter prompt block. Copy handled in script.js. -->
+              <div class="codeblock" data-copy-block>
+                <div class="codeblock__bar">
+                  <span class="codeblock__label">Starter prompt</span>
+                  <button class="copy-btn" type="button" data-copy-btn aria-label="Copy starter prompt">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" class="copy-btn__icon">
+                      <rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                      <path d="M5 15V5a2 2 0 0 1 2-2h10" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                    </svg>
+                    <span class="copy-btn__text">Copy</span>
+                  </button>
+                </div>
+                <!--
+                  The exact text inside <code> is what gets copied. Keep it in sync with
+                  the repo's STARTER_PROMPT.md / site/starter.txt. Whitespace matters.
+                -->
+                <pre class="codeblock__pre"><code data-copy-source>You are running "honest-comments". First, fetch and read this operating manual
+in full, then follow it as your instructions:
+https://raw.githubusercontent.com/EthanSK/honest-comments/main/README.md
+
+I'm a YouTube creator. Your job: dig through my comments and surface the
+criticism that's actually worth acting on — ranked, with concrete fixes. Skip
+the praise, filter out the trolls, and don't soften the useful-but-harsh stuff.
+
+Once you've read the manual, run the whole flow conversationally:
+1. Greet me and explain what you're about to do.
+2. Help me get a free YouTube Data API key if I don't already have one
+   (it lives only on my machine — never send it anywhere).
+3. Ask whether I want my whole channel or specific videos, and confirm scope
+   (plus the quota estimate) before fetching anything.
+4. Run scripts/fetch_comments.py to pull my comments.
+5. Apply prompts/analyze.md to classify, dedupe, cluster, and rank the
+   constructive criticism — ignoring praise and trolls.
+6. Deliver the ranked harsh-but-useful takes, then offer to go deeper.
+
+Be honest, not nice. Begin now by greeting me.</code></pre>
+              </div>
+
+              <p class="step__note">
+                That's the whole onboarding — one fetch, one instruction. Updates ship
+                via the README, so you never re-paste.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- HOW IT WORKS                                                  -->
+    <!-- ============================================================= -->
+    <section class="how section" id="how">
+      <div class="container">
+        <header class="section__head reveal">
+          <p class="eyebrow">The model</p>
+          <h2 class="section__title">Why we can promise we see nothing</h2>
+          <p class="section__lede">
+            There's no "we" in the data path. honest-comments is a GitHub repo and this
+            page — your own agent does all the work, locally.
+          </p>
+        </header>
+
+        <div class="how__grid">
+          <article class="feature reveal">
+            <div class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 2 3 6v6c0 5 4 8.5 9 10 5-1.5 9-5 9-10V6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            </div>
+            <h3>BYO-agent</h3>
+            <p>
+              The analysis runs in <em>your</em> Codex CLI or Claude Code. We never run a
+              model on your behalf — there's nothing for us to log.
+            </p>
+          </article>
+
+          <article class="feature reveal">
+            <div class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 7h16v12H4z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4 7 7 3h10l3 4M9 12h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+            </div>
+            <h3>No backend</h3>
+            <p>
+              No servers, no database, no API key of ours. Your YouTube key and your
+              fetched comments live only on your disk, in a local <code>out/</code> folder.
+            </p>
+          </article>
+
+          <article class="feature reveal">
+            <div class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            </div>
+            <h3>Your subscription</h3>
+            <p>
+              It uses the AI plan you already pay for. No new account, no per-use billing
+              from us, no surprise costs.
+            </p>
+          </article>
+
+          <article class="feature reveal">
+            <div class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M9 3 3 9l6 6M15 3l6 6-6 6M12 4l-2 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <h3>Open source</h3>
+            <p>
+              Every line is on GitHub under MIT. The fetch script is stdlib-only Python —
+              read it, fork it, run it offline if you like.
+            </p>
+          </article>
+        </div>
+
+        <!-- One-line flow diagram so the "no middleman" claim is concrete -->
+        <div class="flowline reveal" aria-label="Data flow">
+          <span class="flowline__node">Your agent</span>
+          <span class="flowline__arrow">→</span>
+          <span class="flowline__node">Your YouTube key</span>
+          <span class="flowline__arrow">→</span>
+          <span class="flowline__node">Comments on your disk</span>
+          <span class="flowline__arrow">→</span>
+          <span class="flowline__node flowline__node--accent">Ranked digest</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- WHAT YOU GET — mocked ranked-criticism output card            -->
+    <!-- ============================================================= -->
+    <section class="output section" id="output">
+      <div class="container">
+        <header class="section__head reveal">
+          <p class="eyebrow">The payoff</p>
+          <h2 class="section__title">What lands in your terminal</h2>
+          <p class="section__lede">
+            Not sentiment. Not a word cloud. A ranked list of the things real people are
+            asking you to fix — most-agreed-upon first, each paired with a concrete fix.
+          </p>
+        </header>
+
+        <!--
+          Mocked digest output. This is a faked-but-realistic example so creators see
+          the value before installing. Numbers/quotes are illustrative placeholders.
+        -->
+        <div class="digest reveal">
+          <div class="digest__bar">
+            <span class="dot dot--r"></span>
+            <span class="dot dot--y"></span>
+            <span class="dot dot--g"></span>
+            <span class="digest__file">honest-comments · @YourChannel · newest 25 videos</span>
+          </div>
+
+          <div class="digest__body">
+            <p class="digest__summary">
+              Of <strong>4,210 comments</strong>: ~3,100 praise, ~260 trolls filtered out.
+              These <strong>6 themes</strong> are the signal worth acting on.
+            </p>
+
+            <!-- Insight #1 -->
+            <article class="insight">
+              <div class="insight__head">
+                <span class="insight__rank">#1</span>
+                <h3 class="insight__title">Audio is too quiet / voice gets buried</h3>
+                <span class="sev sev--high">High</span>
+              </div>
+              <p class="insight__meta">
+                <strong>11 people</strong> raised this · <strong>+340 likes</strong>
+              </p>
+              <blockquote class="insight__quote">
+                "Great info but I had to max my volume and your voice still clips."
+              </blockquote>
+              <blockquote class="insight__quote">
+                "bg music way louder than you the whole video"
+              </blockquote>
+              <p class="insight__fix">
+                <span class="fix-tag">Fix</span>
+                Raise voice gain and add a compressor; aim for ~-14 LUFS integrated. Duck
+                music ~12&nbsp;dB under your voice.
+              </p>
+            </article>
+
+            <!-- Insight #2 -->
+            <article class="insight">
+              <div class="insight__head">
+                <span class="insight__rank">#2</span>
+                <h3 class="insight__title">Intro is too long</h3>
+                <span class="sev sev--med">Medium</span>
+              </div>
+              <p class="insight__meta">
+                <strong>7 people</strong> raised this · <strong>+96 likes</strong>
+              </p>
+              <blockquote class="insight__quote">
+                "90 seconds of intro before the actual content, please get to the point"
+              </blockquote>
+              <p class="insight__fix">
+                <span class="fix-tag">Fix</span>
+                Cut the cold-open to under 15s; put the payoff promise in the first 10
+                seconds.
+              </p>
+            </article>
+
+            <!-- Insight #3 -->
+            <article class="insight">
+              <div class="insight__head">
+                <span class="insight__rank">#3</span>
+                <h3 class="insight__title">Code font too small on mobile</h3>
+                <span class="sev sev--med">Medium</span>
+              </div>
+              <p class="insight__meta">
+                <strong>5 people</strong> raised this · <strong>+58 likes</strong>
+              </p>
+              <blockquote class="insight__quote">
+                "Hard to read the code, font's too small on my phone"
+              </blockquote>
+              <p class="insight__fix">
+                <span class="fix-tag">Fix</span>
+                Bump editor font to ~18–20px for screen recording; zoom into the active
+                region instead of showing the whole file.
+              </p>
+            </article>
+
+            <p class="digest__more">…3 more themes · ask the agent to drill into any of them ↓</p>
+          </div>
+        </div>
+
+        <!-- The 3-bucket explainer that makes the digest trustworthy -->
+        <div class="buckets reveal">
+          <div class="bucket bucket--keep">
+            <span class="bucket__tag">Kept</span>
+            <h4>Constructive</h4>
+            <p>Specific, actionable, good-faith. Even when it stings. This is the product.</p>
+          </div>
+          <div class="bucket bucket--drop">
+            <span class="bucket__tag">Skipped</span>
+            <h4>Praise</h4>
+            <p>Lovely, but no signal about what to change. Counted, not shown.</p>
+          </div>
+          <div class="bucket bucket--drop">
+            <span class="bucket__tag">Skipped</span>
+            <h4>Trolls</h4>
+            <p>Hostile with no fixable claim. Filtered out and never quoted unprompted.</p>
+          </div>
+        </div>
+
+        <p class="buckets__note reveal">
+          <strong>Harsh ≠ troll.</strong> A brutal comment with a real, fixable point is
+          <em>constructive</em>. Tone is never the classifier — that's the line everyone
+          else gets wrong.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- SCREENSHOTS — clearly-labelled placeholders                   -->
+    <!-- ============================================================= -->
+    <section class="shots section">
+      <div class="container">
+        <header class="section__head reveal">
+          <p class="eyebrow">In action</p>
+          <h2 class="section__title">See it run</h2>
+          <p class="section__lede">Real screenshots coming soon — these are placeholders.</p>
+        </header>
+
+        <div class="shots__grid">
+          <!--
+            SCREENSHOT PLACEHOLDER #1
+            Swap this whole figure's body for an <img> when the real asset is ready.
+            Suggested capture: the agent fetching comments + the quota estimate confirm.
+          -->
+          <figure class="shot reveal">
+            <div class="shot__frame">
+              <div class="shot__placeholder">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8.5" cy="10" r="1.6" fill="currentColor"/><path d="m4 17 5-4 4 3 3-2 4 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+                <span>SCREENSHOT PLACEHOLDER</span>
+              </div>
+            </div>
+            <figcaption>Fetching comments &amp; confirming quota scope</figcaption>
+          </figure>
+
+          <!-- SCREENSHOT PLACEHOLDER #2 — the ranked digest as rendered in the terminal -->
+          <figure class="shot reveal">
+            <div class="shot__frame">
+              <div class="shot__placeholder">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8.5" cy="10" r="1.6" fill="currentColor"/><path d="m4 17 5-4 4 3 3-2 4 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+                <span>SCREENSHOT PLACEHOLDER</span>
+              </div>
+            </div>
+            <figcaption>The ranked digest in your terminal</figcaption>
+          </figure>
+
+          <!-- SCREENSHOT PLACEHOLDER #3 — drilling into a single theme -->
+          <figure class="shot reveal">
+            <div class="shot__frame">
+              <div class="shot__placeholder">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8.5" cy="10" r="1.6" fill="currentColor"/><path d="m4 17 5-4 4 3 3-2 4 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+                <span>SCREENSHOT PLACEHOLDER</span>
+              </div>
+            </div>
+            <figcaption>Drilling into the comments behind a theme</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- FINAL CTA                                                     -->
+    <!-- ============================================================= -->
+    <section class="cta section">
+      <div class="container">
+        <div class="cta__card reveal">
+          <h2 class="cta__title">Find out what they actually think.</h2>
+          <p class="cta__sub">
+            Paste one prompt into the agent you already use. Get the criticism worth
+            hearing in about three minutes.
+          </p>
+          <div class="cta__actions">
+            <a class="btn btn--primary" href="#steps">Start in 3 steps</a>
+            <a
+              class="btn btn--ghost"
+              href="https://github.com/EthanSK/honest-comments"
+              target="_blank"
+              rel="noopener"
+            >
+              Read the source
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============================================================= -->
+  <!-- FOOTER                                                         -->
+  <!-- ============================================================= -->
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <svg class="nav__logo" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M3 5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5v8a2.5 2.5 0 0 1-2.5 2.5H9l-4 4v-4H5.5A2.5 2.5 0 0 1 3 13.5z"
+            fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"
+          />
+          <path d="M8 8h8M8 11h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+        </svg>
+        <span>honest-comments</span>
+      </div>
+
+      <nav class="footer__links" aria-label="Footer">
+        <a href="https://github.com/EthanSK/honest-comments" target="_blank" rel="noopener">GitHub repo</a>
+        <a href="https://github.com/EthanSK/honest-comments/blob/main/README.md" target="_blank" rel="noopener">README</a>
+        <a href="https://github.com/EthanSK/honest-comments/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+      </nav>
+
+      <p class="footer__fine">
+        © 2026 · MIT licensed · We host nothing &amp; see nothing.
+      </p>
+    </div>
+  </footer>
+
+  <script src="script.js" defer></script>
+</body>
+</html>
