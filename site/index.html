@@ -13,11 +13,13 @@
     3. The three-step flow (THE centerpiece): Get an agent -> Get a key -> Paste prompt
     4. "How it works" — BYO-agent / no backend / your subscription / open source
     5. "What you get" — a mocked ranked-criticism output card
-    6. Screenshot placeholders (clearly labelled — real screenshots swapped in later)
+    6. "See it run" — three hand-built HTML window mockups of the agent in action
+       (the tool runs in the creator's own terminal, so these stand in for
+       screenshots: real text in styled .mock windows, illustrative numbers)
     7. Footer — GitHub repo + MIT
 
-  Anything marked SCREENSHOT PLACEHOLDER or LOGO PLACEHOLDER is intentional and meant
-  to be replaced with real assets later.
+  Brand marks (OpenAI + Anthropic) in step 1 are inline, dependency-free SVGs used
+  only for "works with" attribution — no external image hotlinks anywhere.
 -->
 <html lang="en">
 <head>
@@ -179,7 +181,7 @@
                 locally and does the analysis using the subscription you already have.
               </p>
 
-              <!-- Two agent option cards, each with an inline LOGO PLACEHOLDER SVG -->
+              <!-- Two agent option cards, each with an inline official brand mark (SVG) -->
               <div class="agent-grid">
                 <a
                   class="agent-card"
@@ -188,19 +190,16 @@
                   rel="noopener"
                 >
                   <!--
-                    LOGO PLACEHOLDER — OpenAI / Codex.
-                    Replace this inline SVG with the official OpenAI mark when available.
-                    Kept monochrome so it inherits the card's text colour.
+                    OFFICIAL BRAND MARK — OpenAI "blossom"/knot glyph (used here for
+                    "works with" attribution only). Recreated as a single inline,
+                    dependency-free SVG path so the site stays offline-renderable —
+                    NO external image hotlink. It's a solid fill that inherits
+                    currentColor (the .agent-card text colour), so it reads crisp at
+                    the ~34px the .agent-card__logo slot renders it.
                   -->
                   <span class="agent-card__logo" aria-hidden="true">
-                    <svg viewBox="0 0 24 24">
-                      <path
-                        d="M12 2.6a4.3 4.3 0 0 0-4.1 3 4.3 4.3 0 0 0-2.8 7.4A4.3 4.3 0 0 0 9 20.5a4.3 4.3 0 0 0 6 .9 4.3 4.3 0 0 0 2.8-7.4A4.3 4.3 0 0 0 15 6a4.3 4.3 0 0 0-3-3.4Z"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.4"
-                      />
-                      <path d="M12 8.4 15.4 10v3.4L12 15.4 8.6 13.4V10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M21.55 9.84a5.4 5.4 0 0 0-.46-4.42 5.43 5.43 0 0 0-5.86-2.6A5.4 5.4 0 0 0 11.1 1a5.43 5.43 0 0 0-5.18 3.76A5.4 5.4 0 0 0 2.3 7.37a5.43 5.43 0 0 0 .67 6.37 5.4 5.4 0 0 0 .46 4.42 5.43 5.43 0 0 0 5.86 2.6A5.4 5.4 0 0 0 13.42 23a5.43 5.43 0 0 0 5.18-3.77 5.4 5.4 0 0 0 3.61-2.61 5.43 5.43 0 0 0-.67-6.78ZM13.42 21.6a4.03 4.03 0 0 1-2.59-.94l3.83-2.21a.63.63 0 0 0 .31-.55v-5.4l1.62.94v4.46a4.05 4.05 0 0 1-3.18 3.7ZM5.18 18a4.03 4.03 0 0 1-.48-2.72l3.83 2.22a.63.63 0 0 0 .63 0l6.59-3.8v1.87l-4.69 2.71a4.05 4.05 0 0 1-5.48-1.48Zm-1-8.32a4.03 4.03 0 0 1 2.11-1.77v4.5a.63.63 0 0 0 .32.55l6.58 3.8-1.62.93-4.69-2.7a4.05 4.05 0 0 1-1.71-5.31Zm14.4 3.35-6.59-3.81 1.62-.93 4.69 2.7a4.04 4.04 0 0 1-.62 7.29v-4.5a.63.63 0 0 0-.32-.55Zm1.61-2.42-3.83-2.22a.63.63 0 0 0-.63 0l-6.59 3.8V10.4l4.69-2.7a4.04 4.04 0 0 1 6 4.19Zm-14.27.92-1.62-.94V6.34a4.04 4.04 0 0 1 6.63-3.1l-3.83 2.2a.63.63 0 0 0-.31.56Zm.88-1.9 2.93-1.7 2.94 1.7v3.39l-2.94 1.7-2.93-1.7Z"/>
                     </svg>
                   </span>
                   <span class="agent-card__name">OpenAI Codex CLI</span>
@@ -214,14 +213,15 @@
                   rel="noopener"
                 >
                   <!--
-                    LOGO PLACEHOLDER — Anthropic / Claude.
-                    Replace with the official Anthropic "burst" mark when available.
+                    OFFICIAL BRAND MARK — Anthropic "burst" / sunburst glyph (used here
+                    for "works with" attribution only). Recreated as inline,
+                    dependency-free SVG paths — NO external image hotlink, so the site
+                    stays offline-renderable. Solid fill inheriting currentColor; the
+                    radiating tapered spokes read cleanly at the ~34px slot size.
                   -->
                   <span class="agent-card__logo" aria-hidden="true">
-                    <svg viewBox="0 0 24 24">
-                      <g stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                        <path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/>
-                      </g>
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 1.4c.34 0 .62.27.63.61l.2 5.42 2.7-4.7a.63.63 0 0 1 1.1.63l-2.7 4.7 4.36-3.23a.63.63 0 0 1 .77.99l-4.36 3.22 5.22-1.46a.63.63 0 0 1 .35 1.21l-5.22 1.46 5.4.36a.63.63 0 0 1 0 1.26l-5.4.36 5.22 1.46a.63.63 0 0 1-.35 1.21l-5.22-1.46 4.36 3.22a.63.63 0 0 1-.77.99l-4.36-3.23 2.7 4.7a.63.63 0 0 1-1.1.63l-2.7-4.7-.2 5.42a.63.63 0 0 1-1.26 0l-.2-5.42-2.7 4.7a.63.63 0 0 1-1.1-.63l2.7-4.7-4.36 3.23a.63.63 0 0 1-.77-.99l4.36-3.22-5.22 1.46a.63.63 0 0 1-.35-1.21l5.22-1.46-5.4-.36a.63.63 0 0 1 0-1.26l5.4-.36-5.22-1.46a.63.63 0 0 1 .35-1.21l5.22 1.46-4.36-3.22a.63.63 0 0 1 .77-.99l4.36 3.23-2.7-4.7a.63.63 0 0 1 1.1-.63l2.7 4.7.2-5.42c.01-.34.29-.61.63-.61Z"/>
                     </svg>
                   </span>
                   <span class="agent-card__name">Anthropic Claude Code</span>
@@ -552,42 +552,140 @@ Be honest, not nice. Begin now by greeting me.</code></pre>
         <header class="section__head reveal">
           <p class="eyebrow">In action</p>
           <h2 class="section__title">See it run</h2>
-          <p class="section__lede">Real screenshots coming soon — these are placeholders.</p>
+          <p class="section__lede">Example output — what the agent shows you (illustrative).</p>
         </header>
 
+        <!--
+          REAL EXAMPLE MOCKUPS (not raster screenshots).
+          The tool runs in the creator's OWN terminal, so there's no canonical
+          screenshot to ship. Instead each .shot is a hand-built HTML "window"
+          mockup (traffic-light title bar + chat/terminal body) styled with the
+          same tokens as the .digest card above. They're pure HTML/CSS, so they:
+            • render with JS disabled (content is real text, not an <img>),
+            • stay crisp at any zoom / DPI (vector, not pixels),
+            • restyle in one place if the palette ever changes.
+          Numbers/quotes are illustrative — the section lede says as much.
+          Each window keeps the `.shot.reveal` wrapper so the scroll-in animation
+          and figcaption behave exactly as before.
+        -->
         <div class="shots__grid">
-          <!--
-            SCREENSHOT PLACEHOLDER #1
-            Swap this whole figure's body for an <img> when the real asset is ready.
-            Suggested capture: the agent fetching comments + the quota estimate confirm.
-          -->
+
+          <!-- MOCKUP 1 — Fetching + scope confirm.
+               Shows the agent greeting, asking channel-vs-videos, and reporting
+               the quota estimate + the fetch result. Chat-bubble style. -->
           <figure class="shot reveal">
-            <div class="shot__frame">
-              <div class="shot__placeholder">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8.5" cy="10" r="1.6" fill="currentColor"/><path d="m4 17 5-4 4 3 3-2 4 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
-                <span>SCREENSHOT PLACEHOLDER</span>
+            <div class="mock">
+              <div class="mock__bar">
+                <span class="dot dot--r"></span>
+                <span class="dot dot--y"></span>
+                <span class="dot dot--g"></span>
+                <span class="mock__title">codex · honest-comments</span>
+              </div>
+              <div class="mock__body">
+                <!-- agent line -->
+                <p class="mock__line mock__line--agent">
+                  Hi! I'll dig out the criticism worth acting on. First —
+                  <strong>whole channel or specific videos?</strong>
+                </p>
+                <!-- creator reply -->
+                <p class="mock__line mock__line--you">Whole channel, newest first.</p>
+                <!-- quota estimate + confirm -->
+                <p class="mock__line mock__line--agent">
+                  Found <strong>312 videos</strong> on @YourChannel. I'll start with your
+                  newest <strong>25</strong> (~280 of your 10,000 daily units). Sound good?
+                </p>
+                <p class="mock__line mock__line--you">Go for it.</p>
+                <!-- terminal-style result line -->
+                <p class="mock__sys">
+                  <span class="mock__ok">✓</span> Pulled <strong>4,210 comments</strong>
+                  across 25 videos. 2 had comments disabled.
+                </p>
               </div>
             </div>
             <figcaption>Fetching comments &amp; confirming quota scope</figcaption>
           </figure>
 
-          <!-- SCREENSHOT PLACEHOLDER #2 — the ranked digest as rendered in the terminal -->
+          <!-- MOCKUP 2 — the ranked digest (the money shot).
+               Two ranked insight cards + the "of 4,210…" framing line. -->
           <figure class="shot reveal">
-            <div class="shot__frame">
-              <div class="shot__placeholder">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8.5" cy="10" r="1.6" fill="currentColor"/><path d="m4 17 5-4 4 3 3-2 4 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
-                <span>SCREENSHOT PLACEHOLDER</span>
+            <div class="mock">
+              <div class="mock__bar">
+                <span class="dot dot--r"></span>
+                <span class="dot dot--y"></span>
+                <span class="dot dot--g"></span>
+                <span class="mock__title">ranked digest · 6 themes</span>
+              </div>
+              <div class="mock__body">
+                <!-- rank #1 -->
+                <div class="mock__rank">
+                  <div class="mock__rank-head">
+                    <span class="mock__rank-no">#1</span>
+                    <span class="mock__rank-title">Audio too quiet / voice gets buried</span>
+                    <span class="sev sev--high">High</span>
+                  </div>
+                  <p class="mock__rank-meta">11 people · +340 likes</p>
+                  <p class="mock__rank-quote">"had to max my volume and you still clip"</p>
+                  <p class="mock__rank-fix">
+                    <span class="fix-tag">Fix</span>
+                    Raise voice gain + compressor, aim ~-14 LUFS, duck music 12&nbsp;dB.
+                  </p>
+                </div>
+                <!-- rank #2 -->
+                <div class="mock__rank">
+                  <div class="mock__rank-head">
+                    <span class="mock__rank-no">#2</span>
+                    <span class="mock__rank-title">Intro drags</span>
+                    <span class="sev sev--med">Med</span>
+                  </div>
+                  <p class="mock__rank-meta">8 people · +96 likes</p>
+                  <p class="mock__rank-quote">"90s before the actual content"</p>
+                </div>
+                <!-- framing line -->
+                <p class="mock__sys mock__sys--frame">
+                  Of 4,210 comments: ~3,100 praise, ~260 trolls filtered —
+                  this is the ~850 that had a point, in 6 themes.
+                </p>
               </div>
             </div>
             <figcaption>The ranked digest in your terminal</figcaption>
           </figure>
 
-          <!-- SCREENSHOT PLACEHOLDER #3 — drilling into a single theme -->
+          <!-- MOCKUP 3 — drilling into a single theme.
+               The agent showing every comment behind one theme as a short
+               scrollable-looking list with like counts. -->
           <figure class="shot reveal">
-            <div class="shot__frame">
-              <div class="shot__placeholder">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8.5" cy="10" r="1.6" fill="currentColor"/><path d="m4 17 5-4 4 3 3-2 4 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
-                <span>SCREENSHOT PLACEHOLDER</span>
+            <div class="mock">
+              <div class="mock__bar">
+                <span class="dot dot--r"></span>
+                <span class="dot dot--y"></span>
+                <span class="dot dot--g"></span>
+                <span class="mock__title">theme · Audio too quiet</span>
+              </div>
+              <div class="mock__body">
+                <p class="mock__line mock__line--you">Show me every comment behind #1.</p>
+                <p class="mock__line mock__line--agent">
+                  Here are all 11 — newest first:
+                </p>
+                <!-- the scrollable-looking comment list -->
+                <ul class="mock__comments">
+                  <li>
+                    <span class="mock__c-text">"Great info but I had to max my volume and your voice still clips."</span>
+                    <span class="mock__c-likes">▲ 122</span>
+                  </li>
+                  <li>
+                    <span class="mock__c-text">"bg music way louder than you the whole video"</span>
+                    <span class="mock__c-likes">▲ 88</span>
+                  </li>
+                  <li>
+                    <span class="mock__c-text">"turn yourself up, had to use headphones to hear"</span>
+                    <span class="mock__c-likes">▲ 54</span>
+                  </li>
+                  <li>
+                    <span class="mock__c-text">"audio's quiet on mobile, kept losing the words"</span>
+                    <span class="mock__c-likes">▲ 31</span>
+                  </li>
+                </ul>
+                <p class="mock__sys">+ 7 more · ask me to draft a reply to any of them</p>
               </div>
             </div>
             <figcaption>Drilling into the comments behind a theme</figcaption>
