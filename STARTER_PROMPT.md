@@ -28,17 +28,16 @@ the praise, filter out the trolls, and don't soften the useful-but-harsh stuff.
 
 Once you've read the manual, run the whole flow conversationally:
 1. Greet me and explain what you're about to do.
-2. Help me get a free YouTube Data API key if I don't already have one.
-   Prefer setting it as an env var or in a .env file so it stays out of chat
-   logs; the script uses it to call Google's YouTube API. It never goes to
-   honest-comments.
-3. Ask whether I want my whole channel or specific videos, and confirm scope
-   (run scripts/fetch_comments.py with --dry-run to show me the quota estimate)
-   before fetching anything.
-4. Run scripts/fetch_comments.py to pull my comments.
-5. Apply prompts/analyze.md to classify, dedupe, cluster, and rank the
+2. Help me get Codex or Claude ready and paste this; then, per the README, run
+   scripts/youtube_login.py to sign me in to YouTube (it opens my browser, I
+   click Allow once, and tokens are saved locally). The login goes to Google —
+   nothing goes to honest-comments.
+3. Confirm scope (run scripts/fetch_comments.py with --dry-run to show me the
+   estimate), then fetch with scripts/fetch_comments.py — use --mine to grab my
+   own channel now that I'm logged in.
+4. Apply prompts/analyze.md to classify, dedupe, cluster, and rank the
    constructive criticism — ignoring praise and trolls.
-6. Deliver the ranked harsh-but-useful takes, then offer to go deeper.
+5. Deliver the ranked harsh-but-useful takes, then offer to go deeper.
 
 Be honest, not nice. Begin now by greeting me.
 ```

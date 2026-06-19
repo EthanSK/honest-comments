@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<!--
+  honest-comments — landing page · DESIGN VARIANT v2 "Terminal / CLI native"
+  =========================================================================
+  SINGLE self-contained file. All CSS lives in the <style> block below; all JS
+  in the inline <script> at the end. NO external fonts, images, or CDNs — this
+  renders fully offline by double-clicking the file.
+
+  VISUAL DIRECTION — "Terminal / CLI native":
+    The page is meant to FEEL like the tool itself. Near-black phosphor terminal
+    aesthetic, monospace everywhere, ONE accent colour (terminal green #3ee07f).
+    Faux terminal windows with traffic-light dots + a blinking cursor; every
+    section header is a shell prompt ($ ...); the 3-step flow is framed as three
+    terminal sessions. Subtle scanline + grid texture sits behind everything.
+    Amber (#e0b53e) appears ONLY on the "High" severity badge so green stays the
+    single signature accent.
+
+  COPY: all product facts (privacy framing, the verbatim starter prompt, the
+  example insight) are reproduced from site/index.html, site/starter.txt and
+  README.md — nothing invented. The privacy section is deliberately HONEST: the
+  key goes to Google's YouTube API, comment text goes to the creator's OWN AI
+  provider, and honest-comments itself receives NOTHING. We never claim "nothing
+  leaves your machine".
+
+  Page structure (top -> bottom):
+    1. Sticky terminal-style top bar
+    2. Hero — faux terminal window, tagline "Your harshest fans, ranked."
+    3. Three steps as terminal sessions (agent -> key -> paste prompt)
+    4. The verbatim starter-prompt block, with a working copy button
+    5. Honest privacy section (where data actually goes)
+    6. One example-output mock (ranked digest)
+    7. Footer -> GitHub repo
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>honest-comments — your harshest fans, ranked</title>
+  <meta
+    name="description"
+    content="Find the genuinely useful criticism buried in your YouTube comments. No praise, no trolls — ranked, with concrete fixes. Runs on your own Codex CLI or Claude Code; honest-comments receives nothing."
+  />
+
+  <style>
+    /* =================================================================
+       DESIGN TOKENS
+       One accent (phosphor green). Amber is a single-purpose exception
+       used ONLY on the High-severity badge so green stays the signature.
+       ================================================================= */
+    :root {
+      --bg:        #0a0e0d;   /* near-black terminal base */
+      --bg-grid:   #0d1311;   /* faint grid line tint */
+      --panel:     #0f1513;   /* raised window body */
+      --panel-2:   #0c110f;   /* terminal pane (slightly darker) */
+      --titlebar:  #131a17;   /* window title bar */
+      --border:    #1c2620;   /* hairline borders */
+      --border-hi: #2a3a31;   /* brighter border (hover/focus) */
+
+      --txt:       #d8e4dd;   /* bright body text */
+      --txt-dim:   #7d8f86;   /* dim / secondary text */
+      --txt-faint: #51615a;   /* faintest (comments, captions) */
+
+      --green:     #3ee07f;   /* THE accent — phosphor green */
+      --green-dim: #2a9d5a;   /* darker green for rules/prompts */
+      --green-glow: rgba(62, 224, 127, 0.45);
+      --amber:     #e0b53e;   /* ONLY for the High badge */
+      --red:       #ff5f56;   /* traffic light */
+      --yellow:    #ffbd2e;   /* traffic light */
+      --grn-light: #27c93f;   /* traffic light */
+
+      --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas,
+              "Liberation Mono", "Courier New", monospace;
+
+      --maxw: 980px;
+      --radius: 6px;
+    }
+
+    /* ---------- reset / base ---------- */
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--txt);
+      font-family: var(--mono);
+      font-size: 15px;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      /* Subtle grid + scanline texture layered behind ALL content.
+         Kept very low-contrast so it reads as ambient terminal phosphor,
+         never as decorative noise. */
+      background-image:
+        linear-gradient(var(--bg-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px),
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 3px);
+      background-size: 44px 44px, 44px 44px, 100% 3px;
+      background-position: center top;
+    }
+    /* faint radial phosphor bloom from the top — gives the "screen is on" feel */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(110% 60% at 50% -8%, rgba(62,224,127,0.07), transparent 60%);
+      z-index: 0;
+    }
+
+    a { color: var(--green); text-decoration: none; }
+    a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+    /* visible keyboard focus everywhere (quality floor) */
+    a:focus-visible, button:focus-visible {
+      outline: 2px solid var(--green);
+      outline-offset: 2px;
+      border-radius: 3px;
+    }
+
+    .container { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+    /* ---------- shared terminal-window chrome ----------
+       Every "window" on the page (hero, step sessions, copy box, digest)
+       shares this chrome: a title bar with 3 traffic-light dots + a label,
+       and a bordered body. Defined once so the language is consistent. */
+    .win {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset, 0 24px 60px -30px rgba(0,0,0,0.8);
+    }
+    .win__bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: var(--titlebar);
+      border-bottom: 1px solid var(--border);
+    }
+    .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+    .dot--r { background: var(--red); }
+    .dot--y { background: var(--yellow); }
+    .dot--g { background: var(--grn-light); }
+    .win__label {
+      margin-left: 8px;
+      color: var(--txt-faint);
+      font-size: 12.5px;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .win__body { padding: 22px clamp(16px, 3vw, 28px); }
+
+    /* the shell prompt prefix used throughout: a dim green "$ " */
+    .prompt::before {
+      content: "$ ";
+      color: var(--green-dim);
+      font-weight: 600;
+    }
+
+    /* blinking block cursor */
+    .cursor {
+      display: inline-block;
+      width: 0.6em;
+      height: 1.05em;
+      margin-left: 1px;
+      transform: translateY(0.18em);
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green-glow);
+      animation: blink 1.1s steps(1) infinite;
+    }
+    @keyframes blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+
+    /* =================================================================
+       TOP BAR (sticky)
+       Styled as the editor/terminal tab strip.
+       ================================================================= */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 10px 24px;
+      background: rgba(10, 14, 13, 0.82);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+    }
+    .topbar__brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--txt);
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .topbar__brand:hover { text-decoration: none; }
+    .topbar__brand .lead { color: var(--green-dim); }    /* the "~/" prefix */
+    .topbar__dots { display: inline-flex; gap: 6px; margin-right: 4px; }
+    .topbar__dots .dot { width: 9px; height: 9px; }
+    .topbar__nav { display: flex; align-items: center; gap: 22px; font-size: 13.5px; }
+    .topbar__nav a.lnk { color: var(--txt-dim); }
+    .topbar__nav a.lnk:hover { color: var(--green); text-decoration: none; }
+    .topbar__cta {
+      color: var(--green);
+      border: 1px solid var(--border-hi);
+      padding: 6px 14px;
+      border-radius: 5px;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .topbar__cta:hover { background: rgba(62,224,127,0.08); border-color: var(--green-dim); text-decoration: none; }
+    @media (max-width: 640px) {
+      .topbar__nav .lnk { display: none; }   /* keep GitHub CTA on mobile, drop section links */
+    }
+
+    /* =================================================================
+       HERO
+       ================================================================= */
+    .hero { padding: clamp(56px, 9vw, 104px) 0 clamp(40px, 6vw, 72px); }
+    .hero__eyebrow {
+      color: var(--green);
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      margin: 0 0 20px;
+    }
+    .hero__title {
+      font-size: clamp(34px, 6.4vw, 62px);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      font-weight: 700;
+      margin: 0 0 22px;
+      color: var(--txt);
+    }
+    .hero__title .accent {
+      color: var(--green);
+      text-shadow: 0 0 22px var(--green-glow);
+    }
+    .hero__sub {
+      max-width: 620px;
+      color: var(--txt-dim);
+      font-size: clamp(15px, 1.7vw, 17px);
+      margin: 0 0 28px;
+    }
+    .hero__sub strong { color: var(--txt); font-weight: 600; }
+
+    .hero__promise { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 30px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 13px;
+      font-size: 12.5px;
+      color: var(--txt-dim);
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+    }
+    .pill svg { width: 14px; height: 14px; color: var(--green); flex: none; }
+    .pill strong { color: var(--txt); }
+
+    .hero__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 14px;
+      padding: 11px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .btn--primary {
+      background: var(--green);
+      color: #062012;
+      font-weight: 600;
+      border: 1px solid var(--green);
+      box-shadow: 0 0 0 0 var(--green-glow);
+    }
+    .btn--primary:hover { box-shadow: 0 0 24px -4px var(--green-glow); transform: translateY(-1px); text-decoration: none; }
+    .btn--ghost {
+      background: transparent;
+      color: var(--txt);
+      border: 1px solid var(--border-hi);
+    }
+    .btn--ghost:hover { border-color: var(--green-dim); color: var(--green); text-decoration: none; }
+
+    .hero__foot { color: var(--txt-faint); font-size: 12.5px; margin: 6px 0 0; }
+
+    /* hero terminal window — the centrepiece "thesis" */
+    .hero__win { margin-top: 40px; }
+    .hero__win .win__body { padding: 20px clamp(16px, 3vw, 26px) 24px; }
+    .term-line { white-space: pre-wrap; margin: 0; }
+    .term-line + .term-line { margin-top: 2px; }
+    .term-cmd { color: var(--txt); }
+    .term-out { color: var(--txt-dim); }
+    .term-ok { color: var(--green); }
+    .term-dim { color: var(--txt-faint); }
+    .term-amber { color: var(--amber); }
+
+    /* =================================================================
+       SECTION SCAFFOLD
+       ================================================================= */
+    .section { padding: clamp(54px, 8vw, 88px) 0; position: relative; z-index: 1; }
+    .section__head { margin-bottom: 38px; }
+    .section__kicker {
+      color: var(--green);
+      font-size: 13px;
+      letter-spacing: 0.03em;
+      margin: 0 0 12px;
+    }
+    .section__title {
+      font-size: clamp(24px, 3.6vw, 34px);
+      line-height: 1.15;
+      letter-spacing: -0.015em;
+      font-weight: 700;
+      color: var(--txt);
+      margin: 0 0 12px;
+    }
+    .section__title em { color: var(--green); font-style: normal; }
+    .section__lede { color: var(--txt-dim); max-width: 640px; margin: 0; }
+    .section__lede strong { color: var(--txt); }
+
+    /* =================================================================
+       STEPS — three terminal sessions
+       The order is real (you do them in sequence), so the numbered prompt
+       labels ($ step-1) encode genuine sequence, not decoration.
+       ================================================================= */
+    .steps__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 26px; }
+    .step .win__label .num { color: var(--green); }
+    .step__head {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin: 0 0 6px;
+    }
+    .step__tag {
+      color: var(--green-dim);
+      font-size: 13px;
+      font-weight: 600;
+      flex: none;
+    }
+    .step__title {
+      font-size: clamp(17px, 2.2vw, 20px);
+      font-weight: 600;
+      color: var(--txt);
+      margin: 0;
+      letter-spacing: -0.01em;
+    }
+    .step__text { color: var(--txt-dim); margin: 8px 0 0; }
+    .step__text em { color: var(--txt); font-style: normal; }
+    .step__text code, .inline-code {
+      color: var(--green);
+      background: rgba(62,224,127,0.08);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 0.92em;
+    }
+
+    /* agent option cards (step 1) */
+    .agent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
+    @media (max-width: 560px) { .agent-grid { grid-template-columns: 1fr; } }
+    .agent-card {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      padding: 15px 16px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--txt);
+      transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+    }
+    .agent-card:hover { border-color: var(--green-dim); background: rgba(62,224,127,0.04); transform: translateY(-1px); text-decoration: none; }
+    .agent-card__logo { width: 30px; height: 30px; color: var(--txt); flex: none; display: grid; place-items: center; }
+    .agent-card__logo svg { width: 30px; height: 30px; }
+    .agent-card__name { font-weight: 600; font-size: 14px; }
+    .agent-card__hint { display: block; color: var(--txt-faint); font-size: 11.5px; margin-top: 1px; }
+
+    /* tick list (step 2) */
+    .ticklist { list-style: none; margin: 16px 0 4px; padding: 0; display: grid; gap: 9px; }
+    .ticklist li { position: relative; padding-left: 26px; color: var(--txt-dim); font-size: 13.5px; }
+    .ticklist li::before {
+      content: "›";
+      position: absolute;
+      left: 6px;
+      top: -1px;
+      color: var(--green);
+      font-weight: 700;
+    }
+    .ticklist strong { color: var(--txt); }
+    .inline-link { display: inline-block; margin-top: 14px; font-size: 13px; }
+
+    /* =================================================================
+       COPY-PASTE PROMPT BLOCK (step 3 payload)
+       The verbatim starter prompt, with a working copy button.
+       ================================================================= */
+    .copybox { margin-top: 18px; }
+    .copybox .win__bar { justify-content: flex-start; }
+    .copy-btn {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      color: var(--txt-dim);
+      background: var(--panel);
+      border: 1px solid var(--border-hi);
+      border-radius: 5px;
+      padding: 5px 11px;
+      cursor: pointer;
+      transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+    .copy-btn:hover { color: var(--green); border-color: var(--green-dim); background: rgba(62,224,127,0.06); }
+    .copy-btn svg { width: 14px; height: 14px; }
+    .copy-btn.is-copied { color: var(--green); border-color: var(--green-dim); }
+    .copybox .win__body { padding: 0; background: var(--panel-2); }
+    .copybox pre {
+      margin: 0;
+      padding: 20px clamp(16px, 3vw, 24px);
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--txt);
+      white-space: pre;
+      tab-size: 2;
+    }
+    .copybox pre code { color: inherit; }
+    .step__note { color: var(--txt-faint); font-size: 12.5px; margin: 14px 0 0; }
+
+    /* =================================================================
+       PRIVACY — the honest data-path section
+       ================================================================= */
+    .privacy__grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 8px; }
+    @media (max-width: 760px) { .privacy__grid { grid-template-columns: 1fr; } }
+    .pcard {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 18px;
+    }
+    .pcard__route { color: var(--green); font-size: 12px; letter-spacing: 0.03em; margin: 0 0 10px; }
+    .pcard h3 { font-size: 15px; font-weight: 600; color: var(--txt); margin: 0 0 8px; }
+    .pcard p { color: var(--txt-dim); font-size: 13px; margin: 0; }
+    .pcard p code { color: var(--green); font-size: 0.92em; }
+    .pcard--us { border-color: var(--green-dim); background: linear-gradient(180deg, rgba(62,224,127,0.05), transparent); }
+    .pcard--us .pcard__route { color: var(--green); }
+
+    /* the flow line — concrete proof of "no middleman" */
+    .flowline {
+      margin-top: 28px;
+      padding: 16px 18px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 14px;
+      font-size: 13px;
+      color: var(--txt-dim);
+    }
+    .flowline .node { color: var(--txt); }
+    .flowline .arrow { color: var(--green-dim); }
+    .flowline .node--accent { color: var(--green); font-weight: 600; }
+    .privacy__honest {
+      margin-top: 22px;
+      color: var(--txt-dim);
+      font-size: 13.5px;
+      border-left: 2px solid var(--green-dim);
+      padding-left: 16px;
+    }
+    .privacy__honest strong { color: var(--txt); }
+
+    /* =================================================================
+       OUTPUT — one example ranked digest mock
+       ================================================================= */
+    .digest .win__body { padding: 0; }
+    .digest__summary {
+      padding: 18px clamp(16px, 3vw, 24px);
+      border-bottom: 1px solid var(--border);
+      color: var(--txt-dim);
+      font-size: 13.5px;
+      margin: 0;
+    }
+    .digest__summary strong { color: var(--txt); }
+    .insight { padding: 20px clamp(16px, 3vw, 24px); border-bottom: 1px solid var(--border); }
+    .insight:last-child { border-bottom: none; }
+    .insight__head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+    .insight__rank { color: var(--green); font-weight: 700; flex: none; }
+    .insight__title { font-size: 15px; font-weight: 600; color: var(--txt); margin: 0; flex: 1 1 220px; }
+    .sev {
+      font-size: 11px;
+      padding: 2px 9px;
+      border-radius: 20px;
+      letter-spacing: 0.03em;
+      flex: none;
+      border: 1px solid;
+    }
+    .sev--high { color: var(--amber); border-color: rgba(224,181,62,0.45); background: rgba(224,181,62,0.08); }
+    .sev--med  { color: var(--txt-dim); border-color: var(--border-hi); background: var(--panel-2); }
+    .insight__meta { color: var(--txt-dim); font-size: 12.5px; margin: 0 0 12px; }
+    .insight__meta strong { color: var(--txt); }
+    .insight__quote {
+      margin: 0 0 8px;
+      padding: 8px 12px;
+      border-left: 2px solid var(--border-hi);
+      color: var(--txt-dim);
+      font-size: 13px;
+      background: var(--panel-2);
+      border-radius: 0 4px 4px 0;
+    }
+    .insight__fix { margin: 12px 0 0; color: var(--txt); font-size: 13px; }
+    .fix-tag {
+      display: inline-block;
+      color: var(--green);
+      border: 1px solid var(--green-dim);
+      border-radius: 4px;
+      font-size: 11px;
+      padding: 1px 7px;
+      margin-right: 8px;
+      letter-spacing: 0.03em;
+    }
+    .digest__more {
+      padding: 16px clamp(16px, 3vw, 24px);
+      color: var(--txt-faint);
+      font-size: 12.5px;
+      margin: 0;
+    }
+
+    /* buckets — what gets kept vs skipped */
+    .buckets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 22px; }
+    @media (max-width: 700px) { .buckets { grid-template-columns: 1fr; } }
+    .bucket { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+    .bucket__tag { font-size: 11px; letter-spacing: 0.04em; }
+    .bucket--keep { border-color: var(--green-dim); }
+    .bucket--keep .bucket__tag { color: var(--green); }
+    .bucket--drop .bucket__tag { color: var(--txt-faint); }
+    .bucket h4 { margin: 8px 0 6px; font-size: 14px; color: var(--txt); }
+    .bucket p { margin: 0; font-size: 12.5px; color: var(--txt-dim); }
+    .buckets__note { margin-top: 18px; color: var(--txt-dim); font-size: 13px; }
+    .buckets__note strong { color: var(--txt); }
+    .buckets__note em { color: var(--green); font-style: normal; }
+
+    /* =================================================================
+       FOOTER
+       ================================================================= */
+    .footer { border-top: 1px solid var(--border); padding: 36px 0; position: relative; z-index: 1; }
+    .footer__inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+    .footer__brand { display: inline-flex; align-items: center; gap: 8px; color: var(--txt); font-weight: 600; }
+    .footer__brand .lead { color: var(--green-dim); }
+    .footer__links { display: flex; flex-wrap: wrap; gap: 20px; font-size: 13px; }
+    .footer__links a { color: var(--txt-dim); }
+    .footer__links a:hover { color: var(--green); }
+    .footer__fine { width: 100%; color: var(--txt-faint); font-size: 12px; margin: 8px 0 0; }
+
+    /* =================================================================
+       SCROLL REVEAL (progressive enhancement)
+       JS adds .reveal-ready to <html>; until then everything is visible,
+       so a JS-disabled browser shows the full page. Respects reduced motion.
+       ================================================================= */
+    .reveal-ready .reveal { opacity: 0; transform: translateY(14px); }
+    .reveal-ready .reveal.is-in {
+      opacity: 1;
+      transform: none;
+      transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .reveal-ready .reveal { opacity: 1 !important; transform: none !important; }
+    }
+  </style>
+</head>
+<body id="top">
+
+  <!-- ============================================================= -->
+  <!-- STICKY TOP BAR (terminal tab strip)                           -->
+  <!-- ============================================================= -->
+  <header class="topbar">
+    <a class="topbar__brand" href="#top" aria-label="honest-comments home">
+      <span class="topbar__dots" aria-hidden="true">
+        <span class="dot dot--r"></span><span class="dot dot--y"></span><span class="dot dot--g"></span>
+      </span>
+      <span><span class="lead">~/</span>honest-comments</span>
+    </a>
+    <nav class="topbar__nav" aria-label="Primary">
+      <a class="lnk" href="#steps">3 steps</a>
+      <a class="lnk" href="#privacy">privacy</a>
+      <a class="lnk" href="#output">output</a>
+      <a class="topbar__cta" href="https://github.com/EthanSK/honest-comments" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ============================================================= -->
+    <!-- HERO                                                          -->
+    <!-- ============================================================= -->
+    <section class="hero">
+      <div class="container">
+        <p class="hero__eyebrow prompt reveal">honest-comments --for youtube-creators</p>
+
+        <h1 class="hero__title reveal">
+          Your harshest fans,<br />
+          <span class="accent">ranked.</span>
+        </h1>
+
+        <p class="hero__sub reveal">
+          Somewhere under the praise and the trolls, a handful of comments are telling you
+          exactly what to fix. <strong>honest-comments</strong> digs them out, dedupes them,
+          and ranks them by how many people actually agree — each one paired with a concrete fix.
+        </p>
+
+        <!-- the trust anchor: where data does / doesn't go -->
+        <div class="hero__promise reveal">
+          <span class="pill">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Runs on <strong>your</strong> Codex / Claude
+          </span>
+          <span class="pill">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8.5 12.5 11 15l4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            honest-comments receives nothing
+          </span>
+          <span class="pill">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            No backend, no sign-up
+          </span>
+        </div>
+
+        <div class="hero__actions reveal">
+          <a class="btn btn--primary" href="#steps">Start in 3 steps</a>
+          <a class="btn btn--ghost" href="#output">See a sample report</a>
+        </div>
+
+        <!-- HONEST framing: not "nothing leaves your machine" — nothing goes to US. -->
+        <p class="hero__foot reveal">Open source · MIT · BYO-agent · nothing goes to us — there are no honest-comments servers</p>
+
+        <!-- HERO TERMINAL — the thesis: the tool is a session you run yourself.
+             The last line types itself on load (see inline JS), ending in a
+             blinking cursor. Pure decoration; content is real even without JS. -->
+        <div class="win hero__win reveal" aria-hidden="true">
+          <div class="win__bar">
+            <span class="dot dot--r"></span><span class="dot dot--y"></span><span class="dot dot--g"></span>
+            <span class="win__label">codex · ~/honest-comments</span>
+          </div>
+          <div class="win__body">
+            <p class="term-line"><span class="prompt term-cmd">paste starter prompt → Codex CLI / Claude Code</span></p>
+            <p class="term-line term-out">Hi! I'll dig out the criticism worth acting on.</p>
+            <p class="term-line term-out">Whole channel or specific videos?</p>
+            <p class="term-line"><span class="term-dim">…fetching public comments via your YouTube key…</span></p>
+            <p class="term-line"><span class="term-ok">✓</span> <span class="term-out">Pulled <strong style="color:var(--txt)">4,210 comments</strong> across 25 videos.</span></p>
+            <p class="term-line term-out">Ranked digest ready — <span class="term-amber">6 themes</span> worth acting on.</p>
+            <p class="term-line"><span class="prompt term-cmd" id="hero-type"></span><span class="cursor"></span></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- THREE STEPS — terminal sessions                               -->
+    <!-- ============================================================= -->
+    <section class="section" id="steps">
+      <div class="container">
+        <header class="section__head reveal">
+          <p class="section__kicker prompt">setup --takes 3-minutes</p>
+          <h2 class="section__title">Three steps to honest feedback</h2>
+          <p class="section__lede">
+            You bring the agent and a free key. honest-comments brings the operating manual.
+            Nothing to install beyond a CLI you might already have.
+          </p>
+        </header>
+
+        <ol class="steps__list">
+          <!-- STEP 1 — get an agent -->
+          <li class="win step reveal">
+            <div class="win__bar">
+              <span class="dot dot--r"></span><span class="dot dot--y"></span><span class="dot dot--g"></span>
+              <span class="win__label"><span class="num">step-1</span> · get-an-agent</span>
+            </div>
+            <div class="win__body">
+              <div class="step__head">
+                <span class="step__tag">01</span>
+                <h3 class="step__title">Get Codex CLI or Claude Code</h3>
+              </div>
+              <p class="step__text">
+                honest-comments runs <em>inside</em> an AI coding agent you control. Pick whichever
+                you already pay for — it orchestrates the whole flow locally and does the analysis
+                on the subscription you already have.
+              </p>
+
+              <div class="agent-grid">
+                <!-- OpenAI Codex CLI — official "knot" glyph, inline SVG (no hotlink) -->
+                <a class="agent-card" href="https://developers.openai.com/codex/cli/" target="_blank" rel="noopener">
+                  <span class="agent-card__logo" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.55 9.84a5.4 5.4 0 0 0-.46-4.42 5.43 5.43 0 0 0-5.86-2.6A5.4 5.4 0 0 0 11.1 1a5.43 5.43 0 0 0-5.18 3.76A5.4 5.4 0 0 0 2.3 7.37a5.43 5.43 0 0 0 .67 6.37 5.4 5.4 0 0 0 .46 4.42 5.43 5.43 0 0 0 5.86 2.6A5.4 5.4 0 0 0 13.42 23a5.43 5.43 0 0 0 5.18-3.77 5.4 5.4 0 0 0 3.61-2.61 5.43 5.43 0 0 0-.67-6.78ZM13.42 21.6a4.03 4.03 0 0 1-2.59-.94l3.83-2.21a.63.63 0 0 0 .31-.55v-5.4l1.62.94v4.46a4.05 4.05 0 0 1-3.18 3.7ZM5.18 18a4.03 4.03 0 0 1-.48-2.72l3.83 2.22a.63.63 0 0 0 .63 0l6.59-3.8v1.87l-4.69 2.71a4.05 4.05 0 0 1-5.48-1.48Zm-1-8.32a4.03 4.03 0 0 1 2.11-1.77v4.5a.63.63 0 0 0 .32.55l6.58 3.8-1.62.93-4.69-2.7a4.05 4.05 0 0 1-1.71-5.31Zm14.4 3.35-6.59-3.81 1.62-.93 4.69 2.7a4.04 4.04 0 0 1-.62 7.29v-4.5a.63.63 0 0 0-.32-.55Zm1.61-2.42-3.83-2.22a.63.63 0 0 0-.63 0l-6.59 3.8V10.4l4.69-2.7a4.04 4.04 0 0 1 6 4.19Zm-14.27.92-1.62-.94V6.34a4.04 4.04 0 0 1 6.63-3.1l-3.83 2.2a.63.63 0 0 0-.31.56Zm.88-1.9 2.93-1.7 2.94 1.7v3.39l-2.94 1.7-2.93-1.7Z"/></svg>
+                  </span>
+                  <span>
+                    <span class="agent-card__name">OpenAI Codex CLI</span>
+                    <span class="agent-card__hint">developers.openai.com →</span>
+                  </span>
+                </a>
+                <!-- Anthropic Claude Code — official "burst" glyph, inline SVG (no hotlink) -->
+                <a class="agent-card" href="https://www.anthropic.com/claude-code" target="_blank" rel="noopener">
+                  <span class="agent-card__logo" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.4c.34 0 .62.27.63.61l.2 5.42 2.7-4.7a.63.63 0 0 1 1.1.63l-2.7 4.7 4.36-3.23a.63.63 0 0 1 .77.99l-4.36 3.22 5.22-1.46a.63.63 0 0 1 .35 1.21l-5.22 1.46 5.4.36a.63.63 0 0 1 0 1.26l-5.4.36 5.22 1.46a.63.63 0 0 1-.35 1.21l-5.22-1.46 4.36 3.22a.63.63 0 0 1-.77.99l-4.36-3.23 2.7 4.7a.63.63 0 0 1-1.1.63l-2.7-4.7-.2 5.42a.63.63 0 0 1-1.26 0l-.2-5.42-2.7 4.7a.63.63 0 0 1-1.1-.63l2.7-4.7-4.36 3.23a.63.63 0 0 1-.77-.99l4.36-3.22-5.22 1.46a.63.63 0 0 1-.35-1.21l5.22-1.46-5.4-.36a.63.63 0 0 1 0-1.26l5.4-.36-5.22-1.46a.63.63 0 0 1 .35-1.21l5.22 1.46-4.36-3.22a.63.63 0 0 1 .77-.99l4.36 3.23-2.7-4.7a.63.63 0 0 1 1.1-.63l2.7 4.7.2-5.42c.01-.34.29-.61.63-.61Z"/></svg>
+                  </span>
+                  <span>
+                    <span class="agent-card__name">Anthropic Claude Code</span>
+                    <span class="agent-card__hint">anthropic.com →</span>
+                  </span>
+                </a>
+              </div>
+            </div>
+          </li>
+
+          <!-- STEP 2 — free YouTube API key -->
+          <li class="win step reveal">
+            <div class="win__bar">
+              <span class="dot dot--r"></span><span class="dot dot--y"></span><span class="dot dot--g"></span>
+              <span class="win__label"><span class="num">step-2</span> · youtube-api-key</span>
+            </div>
+            <div class="win__body">
+              <div class="step__head">
+                <span class="step__tag">02</span>
+                <h3 class="step__title">Get a free YouTube API key</h3>
+              </div>
+              <p class="step__text">
+                A plain Google Cloud API key (public data only — no OAuth, no consent screen). It
+                reads <em>public</em> comments on <em>public</em> videos. The key lives in your
+                env / <code>.env</code> and is used only to call Google's YouTube API — it never
+                goes to honest-comments. The agent walks you through it the first time.
+              </p>
+
+              <ul class="ticklist">
+                <li>Create a project in the Google Cloud console</li>
+                <li>Enable <strong>YouTube Data API v3</strong></li>
+                <li>Create an API key, then set it as the <code>YOUTUBE_API_KEY</code> env var or drop it in a <code>.env</code> file <em>(recommended — keeps it out of chat logs)</em></li>
+                <li>Or paste it to your agent — it's your key; the script calls Google's YouTube API with it and it never goes to honest-comments</li>
+              </ul>
+
+              <a class="inline-link prompt" href="https://github.com/EthanSK/honest-comments#step-1--get-a-free-youtube-data-api-key" target="_blank" rel="noopener">open README --section key-walkthrough ↗</a>
+            </div>
+          </li>
+
+          <!-- STEP 3 — paste the prompt (payload below) -->
+          <li class="win step reveal">
+            <div class="win__bar">
+              <span class="dot dot--r"></span><span class="dot dot--y"></span><span class="dot dot--g"></span>
+              <span class="win__label"><span class="num">step-3</span> · paste-the-prompt</span>
+            </div>
+            <div class="win__body">
+              <div class="step__head">
+                <span class="step__tag">03</span>
+                <h3 class="step__title">Paste this prompt</h3>
+              </div>
+              <p class="step__text">
+                Drop this into Codex CLI or Claude Code. It clones the repo, fetches the operating
+                manual, and takes it from there — greeting you, helping with the key, fetching
+                comments, and delivering the ranked digest.
+              </p>
+
+              <!-- ===== COPY-PASTE PROMPT BLOCK =====
+                   The text inside <code data-copy-source> is reproduced VERBATIM from
+                   site/starter.txt. Copy is handled by the inline JS; the button reads
+                   textContent (so &amp;&amp; copies as literal &&). -->
+              <div class="win copybox" data-copy-block>
+                <div class="win__bar">
+                  <span class="dot dot--r"></span><span class="dot dot--y"></span><span class="dot dot--g"></span>
+                  <span class="win__label">starter.txt — paste this whole block</span>
+                  <button class="copy-btn" type="button" data-copy-btn aria-label="Copy starter prompt to clipboard">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M5 15V5a2 2 0 0 1 2-2h10" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>
+                    <span class="copy-btn__text">Copy</span>
+                  </button>
+                </div>
+                <div class="win__body">
+<pre><code data-copy-source>You are running "honest-comments". Your VERY FIRST action: clone the repo and
+work from inside it (the script and prompts live there, not in this folder):
+
+  git clone https://github.com/EthanSK/honest-comments &amp;&amp; cd honest-comments
+
+If git is unavailable, download and unzip the repo instead, then cd into it:
+
+  curl -L -o honest-comments.zip https://github.com/EthanSK/honest-comments/archive/refs/heads/main.zip
+  unzip honest-comments.zip &amp;&amp; cd honest-comments-main
+
+Then read README.md from this local checkout in full and follow it as your
+instructions. Run every later command from inside this cloned directory.
+
+I'm a YouTube creator. Your job: dig through my comments and surface the
+criticism that's actually worth acting on — ranked, with concrete fixes. Skip
+the praise, filter out the trolls, and don't soften the useful-but-harsh stuff.
+
+Once you've read the manual, run the whole flow conversationally:
+1. Greet me and explain what you're about to do.
+2. Help me get a free YouTube Data API key if I don't already have one.
+   Prefer setting it as an env var or in a .env file so it stays out of chat
+   logs; the script uses it to call Google's YouTube API. It never goes to
+   honest-comments.
+3. Ask whether I want my whole channel or specific videos, and confirm scope
+   (run scripts/fetch_comments.py with --dry-run to show me the quota estimate)
+   before fetching anything.
+4. Run scripts/fetch_comments.py to pull my comments.
+5. Apply prompts/analyze.md to classify, dedupe, cluster, and rank the
+   constructive criticism — ignoring praise and trolls.
+6. Deliver the ranked harsh-but-useful takes, then offer to go deeper.
+
+Be honest, not nice. Begin now by greeting me.</code></pre>
+                </div>
+              </div>
+
+              <p class="step__note">That's the whole onboarding — one paste, one instruction. Updates ship via the README, so you never re-paste.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- PRIVACY — the honest data-path                                -->
+    <!-- ============================================================= -->
+    <section class="section" id="privacy">
+      <div class="container">
+        <header class="section__head reveal">
+          <p class="section__kicker prompt">trace --where-does-my-data-go</p>
+          <h2 class="section__title">Where your data actually goes</h2>
+          <p class="section__lede">
+            We won't pretend "nothing leaves your machine" — that wouldn't be true, and you'd be
+            right not to trust it. Here's the honest map. The one thing that's certain:
+            <strong>nothing routes through honest-comments</strong>.
+          </p>
+        </header>
+
+        <!-- Three real destinations, stated plainly. The "us" card is the punchline. -->
+        <div class="privacy__grid">
+          <div class="pcard reveal">
+            <p class="pcard__route">→ Google's YouTube API</p>
+            <h3>Your key + fetch requests</h3>
+            <p>Your <code>YOUTUBE_API_KEY</code> stays in your env / <code>.env</code> and is used locally to call Google's YouTube API — the only place the key goes, because that's how public comments get fetched.</p>
+          </div>
+          <div class="pcard reveal">
+            <p class="pcard__route">→ Your own AI provider</p>
+            <h3>Comment text for analysis</h3>
+            <p>The comments are classified by <em>your</em> Codex / Claude subscription — exactly like any other prompt you send it. It leaves to your model provider, the same as any agent use.</p>
+          </div>
+          <div class="pcard pcard--us reveal">
+            <p class="pcard__route">→ nowhere</p>
+            <h3>honest-comments receives nothing</h3>
+            <p>No backend, no account, no servers. honest-comments is a GitHub repo and this page. There is no "us" anywhere in the data path to log, store, or sell anything.</p>
+          </div>
+        </div>
+
+        <!-- concrete one-line flow so "no middleman" is provable, not just claimed -->
+        <div class="flowline reveal" aria-label="Data flow">
+          <span class="node">Your agent</span>
+          <span class="arrow">→</span>
+          <span class="node">Your YouTube key</span>
+          <span class="arrow">→</span>
+          <span class="node">Comments on your disk</span>
+          <span class="arrow">→</span>
+          <span class="node node--accent">Ranked digest</span>
+        </div>
+
+        <p class="privacy__honest reveal">
+          <strong>It uses the AI plan you already pay for.</strong> No new account, no per-use
+          billing from us, no surprise costs. Every line is on GitHub under MIT — the fetch script
+          is stdlib-only Python. Read it, fork it, run it offline if you like.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- OUTPUT — one example ranked digest                            -->
+    <!-- ============================================================= -->
+    <section class="section" id="output">
+      <div class="container">
+        <header class="section__head reveal">
+          <p class="section__kicker prompt">cat out/ranked_digest.md</p>
+          <h2 class="section__title">What lands in your terminal</h2>
+          <p class="section__lede">
+            Not sentiment. Not a word cloud. A ranked list of the things real people are asking you
+            to fix — most-agreed-upon first, each paired with a concrete fix.
+          </p>
+        </header>
+
+        <!-- Mocked digest — illustrative numbers/quotes, matching the README example. -->
+        <div class="win digest reveal">
+          <div class="win__bar">
+            <span class="dot dot--r"></span><span class="dot dot--y"></span><span class="dot dot--g"></span>
+            <span class="win__label">honest-comments · @YourChannel · newest 25 videos</span>
+          </div>
+          <div class="win__body">
+            <p class="digest__summary">
+              Of <strong>4,210 comments</strong>: ~3,100 praise, ~260 trolls filtered out.
+              These <strong>6 themes</strong> are the signal worth acting on.
+            </p>
+
+            <article class="insight">
+              <div class="insight__head">
+                <span class="insight__rank">#1</span>
+                <h3 class="insight__title">Audio is too quiet / voice gets buried</h3>
+                <span class="sev sev--high">High</span>
+              </div>
+              <p class="insight__meta"><strong>11 people</strong> raised this · <strong>+340 likes</strong></p>
+              <blockquote class="insight__quote">"Great info but I had to max my volume and your voice still clips."</blockquote>
+              <blockquote class="insight__quote">"bg music way louder than you the whole video"</blockquote>
+              <p class="insight__fix"><span class="fix-tag">Fix</span>Raise voice gain ~-14&nbsp;LUFS integrated and add a compressor. Duck music ~12&nbsp;dB under your voice.</p>
+            </article>
+
+            <article class="insight">
+              <div class="insight__head">
+                <span class="insight__rank">#2</span>
+                <h3 class="insight__title">Intro is too long</h3>
+                <span class="sev sev--med">Medium</span>
+              </div>
+              <p class="insight__meta"><strong>7 people</strong> raised this · <strong>+96 likes</strong></p>
+              <blockquote class="insight__quote">"90 seconds of intro before the actual content, please get to the point"</blockquote>
+              <p class="insight__fix"><span class="fix-tag">Fix</span>Cut the cold-open to under 15s; put the payoff promise in the first 10 seconds.</p>
+            </article>
+
+            <article class="insight">
+              <div class="insight__head">
+                <span class="insight__rank">#3</span>
+                <h3 class="insight__title">Code font too small on mobile</h3>
+                <span class="sev sev--med">Medium</span>
+              </div>
+              <p class="insight__meta"><strong>5 people</strong> raised this · <strong>+58 likes</strong></p>
+              <blockquote class="insight__quote">"Hard to read the code, font's too small on my phone"</blockquote>
+              <p class="insight__fix"><span class="fix-tag">Fix</span>Bump editor font to ~18–20px for screen recording; zoom into the active region.</p>
+            </article>
+
+            <p class="digest__more">…3 more themes · ask the agent to drill into any of them ↓</p>
+          </div>
+        </div>
+
+        <!-- 3-bucket explainer that makes the digest trustworthy -->
+        <div class="buckets reveal">
+          <div class="bucket bucket--keep">
+            <span class="bucket__tag">// kept</span>
+            <h4>Constructive</h4>
+            <p>Specific, actionable, good-faith. Even when it stings. This is the product.</p>
+          </div>
+          <div class="bucket bucket--drop">
+            <span class="bucket__tag">// skipped</span>
+            <h4>Praise</h4>
+            <p>Lovely, but no signal about what to change. Counted, not shown.</p>
+          </div>
+          <div class="bucket bucket--drop">
+            <span class="bucket__tag">// skipped</span>
+            <h4>Trolls</h4>
+            <p>Hostile with no fixable claim. Filtered out and never quoted unprompted.</p>
+          </div>
+        </div>
+
+        <p class="buckets__note reveal">
+          <strong>Harsh ≠ troll.</strong> A brutal comment with a real, fixable point is
+          <em>constructive</em>. Tone is never the classifier — that's the line everyone else gets wrong.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============================================================= -->
+  <!-- FOOTER                                                         -->
+  <!-- ============================================================= -->
+  <footer class="footer">
+    <div class="container footer__inner">
+      <span class="footer__brand"><span class="lead">~/</span>honest-comments</span>
+      <nav class="footer__links" aria-label="Footer">
+        <a href="https://github.com/EthanSK/honest-comments" target="_blank" rel="noopener">GitHub repo ↗</a>
+        <a href="https://github.com/EthanSK/honest-comments/blob/main/README.md" target="_blank" rel="noopener">README</a>
+        <a href="https://github.com/EthanSK/honest-comments/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+      </nav>
+      <p class="footer__fine">© 2026 · MIT licensed · We host nothing &amp; receive nothing.</p>
+    </div>
+  </footer>
+
+  <script>
+    // =================================================================
+    // INLINE JS — all offline, no dependencies.
+    //   1. Copy-to-clipboard for the starter prompt
+    //   2. Scroll-reveal (progressive enhancement)
+    //   3. Hero "type itself" line + blinking cursor
+    // =================================================================
+
+    // ---- 1. COPY BUTTON ----------------------------------------------
+    // Copies the VERBATIM textContent of [data-copy-source]. Because the
+    // source uses &amp;&amp; HTML entities, textContent already decodes them
+    // to literal "&&" — so the clipboard gets exactly the starter.txt text.
+    (function () {
+      var block = document.querySelector('[data-copy-block]');
+      if (!block) return;
+      var btn = block.querySelector('[data-copy-btn]');
+      var src = block.querySelector('[data-copy-source]');
+      var label = btn.querySelector('.copy-btn__text');
+      btn.addEventListener('click', function () {
+        var text = src.textContent;
+        var done = function () {
+          btn.classList.add('is-copied');
+          label.textContent = 'Copied ✓';
+          setTimeout(function () {
+            btn.classList.remove('is-copied');
+            label.textContent = 'Copy';
+          }, 1800);
+        };
+        // Modern clipboard API with a legacy execCommand fallback so copy
+        // still works on file:// where navigator.clipboard may be blocked.
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, fallbackCopy);
+        } else {
+          fallbackCopy();
+        }
+        function fallbackCopy() {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.top = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); done(); }
+          catch (e) { label.textContent = 'Press ⌘C'; }
+          document.body.removeChild(ta);
+        }
+      });
+    })();
+
+    // ---- 2. SCROLL REVEAL --------------------------------------------
+    // Add .reveal-ready to <html> ONLY now (after JS confirmed) so a
+    // JS-disabled page never hides its content. IntersectionObserver fades
+    // each .reveal in once; reduced-motion users get them instantly (CSS).
+    (function () {
+      document.documentElement.classList.add('reveal-ready');
+      var els = document.querySelectorAll('.reveal');
+      if (!('IntersectionObserver' in window)) {
+        els.forEach(function (el) { el.classList.add('is-in'); });
+        return;
+      }
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-in');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+      els.forEach(function (el) { io.observe(el); });
+    })();
+
+    // ---- 3. HERO TYPING LINE -----------------------------------------
+    // Types the final prompt line character-by-character for the "live
+    // session" feel. Skipped entirely under prefers-reduced-motion (the
+    // text is set instantly instead, so the cursor still sits after it).
+    (function () {
+      var target = document.getElementById('hero-type');
+      if (!target) return;
+      var phrase = 'analyze --show-me-what-to-fix';
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduce) { target.textContent = phrase; return; }
+      var i = 0;
+      // small initial delay so it reads as a deliberate "next command"
+      setTimeout(function tick() {
+        target.textContent = phrase.slice(0, i);
+        if (i++ <= phrase.length) setTimeout(tick, 55);
+      }, 650);
+    })();
+  </script>
+</body>
+</html>

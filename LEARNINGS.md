@@ -24,6 +24,26 @@ Each entry looks like:
 (newest first)
 
 ---
+**Date:** 2026-06-19T23:40:39Z
+**Trigger:** owner decision to switch manual-API-key -> agent-driven OAuth login
+**Symptom:** Manual YouTube API-key onboarding too heavy; needed agent-driven login + 'my channel' auto-detect
+**Root cause:** API-key-only auth forced every creator through the Google Cloud console; no way to resolve the signed-in creator's own channel
+**Fix:** Added scripts/youtube_login.py (OAuth 2.0 installed-app loopback + PKCE, stdlib-only) saving tokens to ~/.honest-comments/youtube_token.json (0600); fetch_comments.py now prefers OAuth bearer (auto-refresh) over API key, added --mine (channels.list?mine=true), exit 5=not-authenticated
+**Commit:** uncommitted
+**Guard:** py_compile both scripts; offline PKCE/auth-URL/token-path smoke test; 4-copy starter-prompt equality check; exit-code tests (1/5)
+---
+
+---
+**Date:** 2026-06-19T22:52:41Z
+**Trigger:** v5-vibrant landing page build task
+**Symptom:** Verifying a self-contained landing-page variant: regex prompt-verbatim check kept reporting False
+**Root cause:** An HTML comment near the codeblock literally mentions the marker 'data-copy-source', so a naive regex match started inside the comment instead of the real <code> block; also a 'do NOT claim nothing leaves your machine' guard string lives in a comment, tripping a plain substring check
+**Fix:** Strip HTML comments (re.sub('<!--.*?-->','')) BEFORE extracting/checking — mirrors what the browser DOM does anyway. design-variants/v5-vibrant.html paste-prompt is byte-identical to site/starter.txt after html.unescape
+**Commit:** uncommitted
+**Guard:** Verification snippet strips comments first; honest privacy copy says 'honest-comments sees nothing' / 'nothing goes to us', never 'nothing leaves your machine'
+---
+
+---
 **Date:** 2026-06-19T22:02:52Z
 **Trigger:** Codex review findings list P0-P2 (orchestrator task)
 **Symptom:** Broken first run: agent fetched only README then ran scripts/fetch_comments.py + prompts/analyze.md which don't exist in a fresh creator workspace (No such file or directory). Also: bad API key crashed --videos path, bad video IDs aborted the batch, /c/ vanity URLs failed to resolve, empty channels exited 0 silently, no dry-run estimate, privacy copy overstated, analyze.md not executable at scale, ranking likes-term swamped commenter count, out/ partially gitignored, .reveal invisible without JS.

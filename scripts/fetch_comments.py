@@ -2,20 +2,31 @@
 """honest-comments — fetch_comments.py
 
 Stdlib-only YouTube comment fetcher for the "honest-comments" tool. It pulls
-top-level comments off a creator's videos using the YouTube Data API v3 with a
-plain API KEY (public-data tier — NO OAuth). The raw comments land as JSON on
-the creator's own disk so a downstream agent can classify/rank them later.
+top-level comments off a creator's videos using the YouTube Data API v3. The raw
+comments land as JSON on the creator's own disk so a downstream agent can
+classify/rank them later.
 
-WHY API-KEY-ONLY (no OAuth):
-    Public video comments are readable with a simple API key. That means no
-    consent screen, no token refresh, no client_secret.json. A creator can be
-    running in ~3 minutes. Trade-off we accept: can't read private/unlisted
-    videos or comments held for review — that's fine, the constructive
-    criticism we care about is on public uploads.
+AUTH MODEL — OAUTH FIRST, API KEY AS FALLBACK (changed 2026-06-20):
+    The PREFERRED path is now agent-driven OAuth login (run
+    `scripts/youtube_login.py` once). That saves an OAuth token bundle to
+    ~/.honest-comments/youtube_token.json which this script loads, AUTO-REFRESHES
+    when stale, and sends as `Authorization: Bearer <token>` on every API call.
+    OAuth unlocks `channels.list?mine=true` — resolving the SIGNED-IN creator's
+    own channel with no handle to paste (the --mine flag).
+
+    If there's NO OAuth token but an API KEY is available (--api-key /
+    $YOUTUBE_API_KEY / ./.env), we fall back to the old public-data-only key path
+    (so the tool still works for anyone who prefers a key and hasn't logged in).
+    A plain API key can only read PUBLIC comments and CANNOT use --mine.
+
+    If NEITHER is present, we exit 5 telling the agent to run
+    `python3 scripts/youtube_login.py` first.
 
 WHAT IT DOES:
-    1. Resolves the API key (--api-key > $YOUTUBE_API_KEY > ./.env).
+    1. Resolves auth: OAuth token (preferred, auto-refreshed) > API key.
     2. Builds a list of video IDs from EITHER:
+         - the signed-in creator's OWN channel via channels.list?mine=true
+           (--mine; OAuth only), OR
          - a channel handle / ID / vanity URL (resolves the uploads playlist,
            then pages playlistItems for video IDs), OR
          - an explicit list of video IDs / URLs (--videos), which skips channel
@@ -29,14 +40,18 @@ WHAT IT DOES:
 ROBUST ERROR HANDLING (exit-code contract — keep in sync with README
 "Troubleshooting"):
     - 0  success (or a --dry-run that printed an estimate without fetching).
-    - 1  bad usage (e.g. negative --max-videos / --per-video-cap).
+    - 1  bad usage (e.g. negative --max-videos / --per-video-cap, or --mine
+         without OAuth).
     - 2  403 quotaExceeded -> stop cleanly, write partial data.
-    - 3  400 / 403 bad/disabled/restricted key -> clear message. This fires on
-         BOTH the channel path (key probed during setup) AND the --videos path
-         (no setup probe runs there, so the key is first exercised inside the
-         per-video fetch loop — see the BadApiKey guard there).
+    - 3  400 / 403 bad/disabled/restricted credential -> clear message. This
+         covers a bad API key AND an OAuth token that won't authorize. It fires
+         on BOTH the channel path (credential probed during setup) AND the
+         --videos path (no setup probe runs there, so the credential is first
+         exercised inside the per-video fetch loop — see the BadCredential guard).
     - 4  channel not found / empty channel (no public uploads) / --videos had
          no usable IDs.
+    - 5  NOT AUTHENTICATED — no OAuth token AND no API key. Tells the agent to
+         run `python3 scripts/youtube_login.py` first.
     - Per-video, NON-fatal (run continues, recorded in run_meta):
         * 403 commentsDisabled  -> skip that video, note it.
         * 404 videoNotFound     -> invalid/private/deleted explicit ID; skip it,
@@ -53,11 +68,15 @@ shift; just treat it as "the one pricey call, used only when nothing else
 resolves the channel."
 
 USAGE EXAMPLES:
-    # Whole channel by handle (newest 25 videos by default):
-    python3 scripts/fetch_comments.py --channel @SomeCreator --api-key AIza...
+    # Logged-in creator's OWN channel (the natural default once you've run
+    # youtube_login.py) — no handle needed, resolved via mine=true:
+    python3 scripts/youtube_login.py        # one-time sign-in
+    python3 scripts/fetch_comments.py --mine
 
-    # Channel by ID, wider scope, key from env:
-    export YOUTUBE_API_KEY=AIza...
+    # Whole channel by handle (newest 25 videos by default):
+    python3 scripts/fetch_comments.py --channel @SomeCreator
+
+    # Channel by ID, wider scope (uses whatever auth is configured):
     python3 scripts/fetch_comments.py --channel UCxxxxxxxxxxxxxxxxxxxxxx \
         --max-videos 50
 
@@ -66,8 +85,11 @@ USAGE EXAMPLES:
     python3 scripts/fetch_comments.py \
         --videos "https://youtu.be/abc123,https://www.youtube.com/watch?v=def456,ghi789xyz01"
 
+    # API-key fallback (public comments only, no login, no --mine):
+    python3 scripts/fetch_comments.py --channel @SomeCreator --api-key AIza...
+
     # Include reply chains too (off by default — replies are mostly noise):
-    python3 scripts/fetch_comments.py --channel @SomeCreator --include-replies
+    python3 scripts/fetch_comments.py --mine --include-replies
 """
 
 import argparse
@@ -104,6 +126,24 @@ HTTP_RETRY_BACKOFF_SEC = 2
 # An 11-character token that isn't a URL is treated as a raw YouTube video ID.
 YOUTUBE_ID_LEN = 11
 
+# ---------------------------------------------------------------------------
+# OAuth token store + refresh — must agree with scripts/youtube_login.py.
+# ---------------------------------------------------------------------------
+
+# Where youtube_login.py saves the OAuth token bundle (under the creator's HOME,
+# NOT in the repo). We READ this here; we WRITE it back only after a refresh.
+CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".honest-comments")
+TOKEN_STORE_PATH = os.path.join(CONFIG_DIR, "youtube_token.json")
+
+# Google's token endpoint — same one youtube_login.py uses; we POST here to
+# REFRESH an expired access token using the saved refresh_token.
+GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
+
+# Refresh proactively when the access token has THIS many seconds (or fewer)
+# left, so a long fetch run doesn't have a token expire mid-flight. Google's
+# access tokens last ~3600s; refreshing at <120s remaining is a safe margin.
+TOKEN_REFRESH_SKEW_SEC = 120
+
 
 # ---------------------------------------------------------------------------
 # Custom exceptions — let us map specific API failure modes to clean exits.
@@ -113,8 +153,34 @@ class QuotaExceeded(Exception):
     """Raised when the API reports the daily quota is exhausted (403)."""
 
 
-class BadApiKey(Exception):
-    """Raised when the API key is missing/invalid/not-enabled (400/403)."""
+class BadCredential(Exception):
+    """Raised when the credential (API key OR OAuth token) is rejected (400/403).
+
+    Renamed from the old `BadApiKey` now that auth can be either an API key or an
+    OAuth bearer token — both surface here when Google won't authorize the call.
+    """
+
+
+# Backwards-compatible alias: older code / tests referenced `BadApiKey`. Keep the
+# name pointing at the same class so nothing breaks.
+BadApiKey = BadCredential
+
+
+class NotAuthenticated(Exception):
+    """Raised when NEITHER an OAuth token NOR an API key is available (-> exit 5).
+
+    The agent should run `python3 scripts/youtube_login.py` first (preferred), or
+    provide an API key for the public-data fallback.
+    """
+
+
+class MineRequiresOAuth(Exception):
+    """Raised when --mine is used without an OAuth token (-> exit 1).
+
+    `channels.list?mine=true` resolves the SIGNED-IN user's channel, which only
+    has meaning under OAuth — an API key has no associated user. So --mine is
+    OAuth-only and we fail fast with a clear message.
+    """
 
 
 class ChannelNotFound(Exception):
@@ -139,15 +205,207 @@ class VideoUnavailable(Exception):
 
 
 # ---------------------------------------------------------------------------
-# API key resolution
+# AUTH — the single object every API call authenticates with.
+#
+# An Auth carries EXACTLY ONE of two credentials:
+#   - bearer:  an OAuth access token (preferred). Sent as an Authorization
+#              header; NO `key=` query param. Supports --mine.
+#   - api_key: a plain public-data API key (fallback). Sent as a `key=` query
+#              param; NO Authorization header. Cannot use --mine.
+# api_get() reads this to decide how to authenticate each request, and (for the
+# OAuth case) calls auth.ensure_fresh() before each call so a long run can't be
+# killed by a mid-flight token expiry.
 # ---------------------------------------------------------------------------
 
-def resolve_api_key(cli_key):
+class Auth:
+    """Holds the resolved credential and knows how to keep an OAuth token fresh.
+
+    is_oauth == True  -> bearer-token mode (loaded from youtube_token.json)
+    is_oauth == False -> api-key mode (from --api-key / env / .env)
+    """
+
+    def __init__(self, bearer=None, api_key=None, token_bundle=None):
+        # Exactly one of bearer / api_key is set. token_bundle is the full saved
+        # dict (only in OAuth mode) — we mutate + re-save it on refresh.
+        self.bearer = bearer
+        self.api_key = api_key
+        self._bundle = token_bundle or {}
+
+    @property
+    def is_oauth(self):
+        return self.bearer is not None
+
+    def ensure_fresh(self):
+        """If we're in OAuth mode and the access token is expired/near-expiry,
+        refresh it via the refresh_token and re-save the bundle.
+
+        TOKEN LIFECYCLE (the bit the README promises "auto-refreshes"):
+            load bundle (in resolve_auth)
+              -> on each api_get(): ensure_fresh()
+                   -> if (obtained_at + expires_in - skew) <= now AND we have a
+                      refresh_token: POST refresh grant -> new access_token +
+                      expires_in -> update self.bearer + bundle -> save 0600.
+              -> attach `Authorization: Bearer <self.bearer>` to the request.
+        API-key mode is a no-op here (keys don't expire).
+        """
+        if not self.is_oauth:
+            return  # API keys never expire — nothing to refresh.
+
+        obtained_at = self._bundle.get("obtained_at", 0)
+        expires_in = self._bundle.get("expires_in", 0)
+        # Seconds of remaining validity. If we don't know (missing fields), assume
+        # it's stale and try to refresh.
+        expiry_epoch = obtained_at + expires_in
+        seconds_left = expiry_epoch - int(time.time())
+
+        if seconds_left > TOKEN_REFRESH_SKEW_SEC:
+            return  # Still comfortably valid — keep using the current bearer.
+
+        refresh_token = self._bundle.get("refresh_token", "")
+        if not refresh_token:
+            # We can't refresh without a refresh_token. The current access token
+            # may already be dead; let the call proceed and surface a clean
+            # BadCredential (which the caller turns into "re-run youtube_login").
+            return
+
+        # --- Refresh grant: trade refresh_token for a fresh access_token -----
+        form = {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": self._bundle.get("client_id", ""),
+        }
+        # client_secret is optional for installed apps; only send if present.
+        if self._bundle.get("client_secret"):
+            form["client_secret"] = self._bundle["client_secret"]
+
+        body = urllib.parse.urlencode(form).encode("utf-8")
+        req = urllib.request.Request(
+            GOOGLE_TOKEN_ENDPOINT, data=body, method="POST",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                refreshed = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            # A failed refresh (e.g. the user revoked access, or the refresh
+            # token expired after long inactivity) is an auth failure -> the
+            # creator must log in again. Map to BadCredential so main()'s exit-3
+            # path fires with a "re-run youtube_login.py" hint.
+            detail = ""
+            try:
+                detail = e.read().decode("utf-8")
+            except Exception:
+                pass
+            raise BadCredential(
+                f"Couldn't refresh your YouTube login (HTTP {e.code}: "
+                f"{detail[:200] or e.reason}). Your saved session may have been "
+                f"revoked or expired. Re-run `python3 scripts/youtube_login.py`."
+            )
+        except urllib.error.URLError as e:
+            # Network blip during refresh — surface as a generic runtime error
+            # (the api_get retry loop won't help here since this is a separate
+            # endpoint, so we fail the run cleanly).
+            raise RuntimeError(f"Network error refreshing OAuth token: {e.reason}")
+
+        new_access = refreshed.get("access_token")
+        if not new_access:
+            raise BadCredential(
+                "Token refresh returned no access_token. Re-run "
+                "`python3 scripts/youtube_login.py`."
+            )
+
+        # --- Update in-memory + on-disk bundle -------------------------------
+        self.bearer = new_access
+        self._bundle["access_token"] = new_access
+        self._bundle["expires_in"] = refreshed.get("expires_in", 0)
+        self._bundle["obtained_at"] = int(time.time())
+        # A refresh response usually does NOT include a new refresh_token; keep
+        # the existing one. If it does include one, honour it.
+        if refreshed.get("refresh_token"):
+            self._bundle["refresh_token"] = refreshed["refresh_token"]
+        _save_token_bundle(self._bundle)
+        print("  (refreshed your YouTube access token)")
+
+
+def _save_token_bundle(bundle):
+    """Re-write ~/.honest-comments/youtube_token.json with 0600 perms.
+
+    Used after a refresh so the next run starts from the fresh token. Mirrors the
+    save logic in youtube_login.py (kept simple/independent to avoid importing it
+    — fetch_comments.py must run standalone even if youtube_login.py is absent).
+    """
+    try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        fd = os.open(TOKEN_STORE_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(bundle, fh, indent=2)
+        os.chmod(TOKEN_STORE_PATH, 0o600)
+    except OSError:
+        # If we can't persist the refreshed token, the run still continues with
+        # the in-memory bearer; we just won't have cached it for next time.
+        pass
+
+
+def load_oauth_token():
+    """Load the saved OAuth token bundle, or return None if there isn't one.
+
+    Returns the parsed dict from ~/.honest-comments/youtube_token.json (must
+    contain at least an access_token). Returns None if the file is missing,
+    unreadable, malformed, or has no access_token — so the caller can cleanly
+    fall back to the API-key path.
+    """
+    if not os.path.isfile(TOKEN_STORE_PATH):
+        return None
+    try:
+        with open(TOKEN_STORE_PATH, "r", encoding="utf-8") as fh:
+            bundle = json.load(fh)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    if not bundle.get("access_token"):
+        return None
+    return bundle
+
+
+def resolve_auth(cli_key):
+    """Resolve the credential to use: OAuth token (preferred) > API key.
+
+    Returns an Auth object. Resolution order:
+      1. OAuth bundle at ~/.honest-comments/youtube_token.json (from
+         youtube_login.py). Preferred — supports --mine and reads the creator's
+         own data.
+      2. API key: --api-key > $YOUTUBE_API_KEY > ./.env  (public-data fallback).
+      3. Neither -> NotAuthenticated (exit 5; tells the agent to log in first).
+
+    We NEVER log the token or key.
+    """
+    # 1. OAuth first.
+    bundle = load_oauth_token()
+    if bundle:
+        return Auth(bearer=bundle["access_token"], token_bundle=bundle)
+
+    # 2. API-key fallback.
+    api_key = _resolve_api_key(cli_key)
+    if api_key:
+        return Auth(api_key=api_key)
+
+    # 3. Nothing — not authenticated.
+    raise NotAuthenticated(
+        "Not signed in and no API key found.\n"
+        "  Preferred: run `python3 scripts/youtube_login.py` to sign in to "
+        "YouTube (opens your browser, one click).\n"
+        "  Or (public comments only): pass --api-key, set $YOUTUBE_API_KEY, or "
+        "put YOUTUBE_API_KEY=... in a .env file."
+    )
+
+
+def _resolve_api_key(cli_key):
     """Resolve the API key in priority order: --api-key > env > ./.env file.
 
-    We NEVER hardcode and NEVER log the key. The env-var / .env paths are
-    preferred so the key doesn't land in shell history or chat logs. The key
-    is the creator's own and only ever lives on their machine.
+    Returns the key string, or None if none is configured (so resolve_auth can
+    decide whether that's fatal). We NEVER hardcode and NEVER log the key. The
+    env-var / .env paths are preferred so the key doesn't land in shell history
+    or chat logs. The key is the creator's own and only ever lives on their
+    machine.
     """
     # 1. Explicit CLI flag wins.
     if cli_key:
@@ -199,44 +457,61 @@ def resolve_api_key(cli_key):
                         if val:
                             return val
         except OSError:
-            # If the .env can't be read, fall through to the error below.
+            # If the .env can't be read, fall through.
             pass
 
-    # Nothing found — fail clearly with guidance.
-    raise BadApiKey(
-        "No API key found. Pass --api-key, set the YOUTUBE_API_KEY env var, "
-        "or put YOUTUBE_API_KEY=... in a .env file in this directory."
-    )
+    # Nothing found.
+    return None
 
 
 # ---------------------------------------------------------------------------
 # Low-level HTTP — the single choke-point for every API call.
 # ---------------------------------------------------------------------------
 
-def api_get(endpoint, params, api_key):
-    """GET <API_BASE>/<endpoint>?<params>&key=<api_key> and return parsed JSON.
+def api_get(endpoint, params, auth):
+    """GET <API_BASE>/<endpoint>?<params> authenticated via `auth`, return JSON.
 
     This is the ONE place every YouTube API request flows through, so all the
-    error-classification logic lives here:
+    auth attachment AND error-classification logic lives here:
 
-      * 400 / 403 keyInvalid / API-not-enabled  -> BadApiKey
-      * 403 quotaExceeded / dailyLimitExceeded   -> QuotaExceeded
-      * 403 commentsDisabled                     -> re-raised so the per-video
-                                                    loop can skip just that one
-      * transient 5xx / network errors           -> retried with backoff
+      AUTH (depends on auth.is_oauth):
+        * OAuth bearer mode: call auth.ensure_fresh() (refresh if near-expiry),
+          then send `Authorization: Bearer <token>` — NO `key=` param.
+        * API-key mode: append `&key=<api_key>` to the query — NO auth header.
 
-    The api_key is added here and is NEVER included in any log/print output.
+      ERROR CLASSIFICATION:
+        * 400 / 403 keyInvalid / API-not-enabled / auth errors -> BadCredential
+        * 403 quotaExceeded / dailyLimitExceeded                -> QuotaExceeded
+        * 401 (expired/invalid OAuth token)                     -> BadCredential
+        * 403 commentsDisabled                                  -> re-raised so
+                                                                  the per-video
+                                                                  loop can skip
+        * transient 5xx / network errors                        -> retried
+
+    The token/key is NEVER included in any log/print output.
     """
-    # Copy so we don't mutate the caller's dict, then attach the key last.
+    # OAuth tokens can expire mid-run; refresh BEFORE building the request so the
+    # bearer we attach below is guaranteed fresh. (No-op for API-key mode.)
+    auth.ensure_fresh()
+
+    # Copy so we don't mutate the caller's dict. In API-key mode we attach the
+    # key as a query param; in OAuth mode we attach NOTHING here (the bearer goes
+    # in a header below).
     query = dict(params)
-    query["key"] = api_key
+    if not auth.is_oauth:
+        query["key"] = auth.api_key
     url = endpoint if endpoint.startswith("http") else f"{API_BASE}/{endpoint}"
     full_url = f"{url}?{urllib.parse.urlencode(query)}"
+
+    # In OAuth mode, the access token rides in the Authorization header.
+    headers = {}
+    if auth.is_oauth:
+        headers["Authorization"] = f"Bearer {auth.bearer}"
 
     last_err = None
     for attempt in range(1, HTTP_MAX_RETRIES + 1):
         try:
-            req = urllib.request.Request(full_url, method="GET")
+            req = urllib.request.Request(full_url, method="GET", headers=headers)
             with urllib.request.urlopen(req, timeout=30) as resp:
                 body = resp.read().decode("utf-8")
                 return json.loads(body)
@@ -251,6 +526,17 @@ def api_get(endpoint, params, api_key):
                 pass
             reason, message = _extract_api_error(raw)
 
+            # --- 401: an expired / invalid OAuth bearer token ---------------
+            # API-key calls don't return 401 (a bad key is 400/403), so a 401
+            # here means the OAuth access token was rejected. ensure_fresh()
+            # already tried to keep it valid, so reaching here means refresh
+            # failed or wasn't possible -> tell the creator to log in again.
+            if e.code == 401:
+                raise BadCredential(
+                    (message or "your YouTube login was rejected (401).")
+                    + " Re-run `python3 scripts/youtube_login.py` to sign in again."
+                )
+
             # --- 403s carry the most meaningful reasons ---------------------
             if e.code == 403:
                 if reason in ("quotaExceeded", "dailyLimitExceeded",
@@ -261,17 +547,19 @@ def api_get(endpoint, params, api_key):
                     # Bubble up so the per-video loop skips just this video.
                     raise CommentsDisabled(message or "comments are disabled")
                 if reason in ("forbidden", "accessNotConfigured",
-                              "keyInvalid", "ipRefererBlocked"):
-                    # Key restricted, API not enabled, or key plain wrong.
-                    raise BadApiKey(message or reason)
-                # Unknown 403 — treat as a bad-key-ish fatal with context.
-                raise BadApiKey(message or f"403 {reason}".strip())
+                              "keyInvalid", "ipRefererBlocked",
+                              "authError", "insufficientPermissions"):
+                    # Key restricted, API not enabled, key plain wrong, OR an
+                    # OAuth token without the right scope.
+                    raise BadCredential(message or reason)
+                # Unknown 403 — treat as a bad-credential-ish fatal with context.
+                raise BadCredential(message or f"403 {reason}".strip())
 
-            # --- 400 almost always means a malformed/invalid key here ------
+            # --- 400 almost always means a malformed/invalid credential ----
             if e.code == 400:
                 if reason in ("keyInvalid", "badRequest"):
-                    raise BadApiKey(message or "invalid API key (HTTP 400)")
-                raise BadApiKey(message or f"HTTP 400 {reason}".strip())
+                    raise BadCredential(message or "invalid credential (HTTP 400)")
+                raise BadCredential(message or f"HTTP 400 {reason}".strip())
 
             # --- 404: the requested resource doesn't exist -----------------
             if e.code == 404:
@@ -323,7 +611,7 @@ def _extract_api_error(raw_body):
 # Channel resolution -> uploads playlist -> video IDs
 # ---------------------------------------------------------------------------
 
-def resolve_channel_uploads_playlist(channel_arg, api_key):
+def resolve_channel_uploads_playlist(channel_arg, auth):
     """Resolve a channel handle/ID/vanity URL to its uploads playlist ID.
 
     Returns (uploads_playlist_id, channel_title, channel_id).
@@ -352,7 +640,7 @@ def resolve_channel_uploads_playlist(channel_arg, api_key):
     else:
         raise ChannelNotFound(f"Couldn't understand channel: {channel_arg!r}")
 
-    data = api_get("channels", params, api_key)
+    data = api_get("channels", params, auth)
     items = data.get("items", [])
 
     # Fallback when the direct resolver found nothing. TWO cases land here:
@@ -370,10 +658,10 @@ def resolve_channel_uploads_playlist(channel_arg, api_key):
         print(f"  ! Direct lookup found nothing for {search_name!r}; "
               f"falling back to search.list (the expensive call — drawing from "
               f"the search quota bucket, used only as a last resort).")
-        channel_id = _search_channel_id(search_name, api_key)
+        channel_id = _search_channel_id(search_name, auth)
         data = api_get("channels",
                        {"part": "contentDetails,snippet", "id": channel_id},
-                       api_key)
+                       auth)
         items = data.get("items", [])
 
     if not items:
@@ -392,6 +680,55 @@ def resolve_channel_uploads_playlist(channel_arg, api_key):
 
     title = item.get("snippet", {}).get("title", "channel")
     cid = item.get("id", channel_id or "")
+    return uploads, title, cid
+
+
+def resolve_my_channel_uploads_playlist(auth):
+    """Resolve the SIGNED-IN creator's OWN uploads playlist via mine=true.
+
+    Returns (uploads_playlist_id, channel_title, channel_id) — same shape as
+    resolve_channel_uploads_playlist, so the rest of main() doesn't care which
+    path produced it.
+
+    OAUTH-ONLY: `channels.list?mine=true` means "the channel of the user whose
+    OAuth token this is". An API key has no associated user, so this is
+    meaningless (and would 400) with a key — main() guards --mine to OAuth before
+    we ever get here, but we assert it again for safety.
+
+    This is what makes the logged-in experience handle-free: the creator never
+    pastes their channel; we just ask "give me MY channel's uploads playlist".
+    """
+    if not auth.is_oauth:
+        # Defensive: main() should have already raised MineRequiresOAuth.
+        raise MineRequiresOAuth(
+            "--mine needs an OAuth login (it reads YOUR signed-in channel). Run "
+            "`python3 scripts/youtube_login.py` first."
+        )
+
+    # part=contentDetails -> uploads playlist; snippet -> channel title.
+    # mine=true scopes the lookup to the token's own channel (1 quota unit).
+    data = api_get("channels",
+                   {"part": "contentDetails,snippet", "mine": "true"},
+                   auth)
+    items = data.get("items", [])
+    if not items:
+        raise ChannelNotFound(
+            "Your Google account doesn't appear to have a YouTube channel. "
+            "Make sure you signed in with the Google account that owns your "
+            "channel (re-run youtube_login.py if needed)."
+        )
+
+    item = items[0]
+    uploads = (item.get("contentDetails", {})
+                   .get("relatedPlaylists", {})
+                   .get("uploads"))
+    if not uploads:
+        raise ChannelNotFound(
+            "Your channel resolved but has no uploads playlist (no public videos?)."
+        )
+
+    title = item.get("snippet", {}).get("title", "my-channel")
+    cid = item.get("id", "")
     return uploads, title, cid
 
 
@@ -446,7 +783,7 @@ def _parse_channel_arg(channel_arg):
     return arg, "", ""
 
 
-def _search_channel_id(query, api_key):
+def _search_channel_id(query, auth):
     """Last-resort channel lookup via search.list. THE EXPENSIVE CALL.
 
     Only used when forUsername/forHandle return nothing for a legacy vanity
@@ -457,14 +794,14 @@ def _search_channel_id(query, api_key):
     data = api_get("search",
                    {"part": "snippet", "type": "channel", "q": query,
                     "maxResults": 1},
-                   api_key)
+                   auth)
     items = data.get("items", [])
     if not items:
         raise ChannelNotFound(f"Search found no channel for {query!r}.")
     return items[0]["snippet"]["channelId"]
 
 
-def get_uploads_total(uploads_playlist_id, api_key):
+def get_uploads_total(uploads_playlist_id, auth):
     """Return the TOTAL number of videos in a channel's uploads playlist.
 
     Used by --dry-run to estimate scope without paging every video ID. We do a
@@ -476,11 +813,11 @@ def get_uploads_total(uploads_playlist_id, api_key):
                    {"part": "contentDetails",
                     "playlistId": uploads_playlist_id,
                     "maxResults": 1},
-                   api_key)  # 1 quota unit
+                   auth)  # 1 quota unit
     return data.get("pageInfo", {}).get("totalResults", 0)
 
 
-def list_uploads_video_ids(uploads_playlist_id, api_key, max_videos):
+def list_uploads_video_ids(uploads_playlist_id, auth, max_videos):
     """Page playlistItems.list to collect the channel's video IDs.
 
     Returns a list of dicts: [{"video_id", "title", "published_at"}, ...]
@@ -500,7 +837,7 @@ def list_uploads_video_ids(uploads_playlist_id, api_key, max_videos):
         if page_token:
             params["pageToken"] = page_token
 
-        data = api_get("playlistItems", params, api_key)  # 1 quota unit/page
+        data = api_get("playlistItems", params, auth)  # 1 quota unit/page
 
         for item in data.get("items", []):
             vid = item.get("contentDetails", {}).get("videoId")
@@ -597,7 +934,7 @@ def _extract_video_id(token):
 # Comment fetching — the core loop
 # ---------------------------------------------------------------------------
 
-def fetch_video_comments(video_id, api_key, per_video_cap, include_replies):
+def fetch_video_comments(video_id, auth, per_video_cap, include_replies):
     """Page commentThreads.list for one video, return a list of kept-field dicts.
 
     YouTube API call shape (per page, costs 1 quota unit):
@@ -646,7 +983,7 @@ def fetch_video_comments(video_id, api_key, per_video_cap, include_replies):
         # single bad video and continue; an uncaught ChannelNotFound here would
         # traceback and abort ALL output for one bad ID (P0-3).
         try:
-            data = api_get("commentThreads", params, api_key)  # 1 quota unit/page
+            data = api_get("commentThreads", params, auth)  # 1 quota unit/page
         except ChannelNotFound as e:
             raise VideoUnavailable(str(e) or "video not found / not accessible")
 
@@ -759,19 +1096,26 @@ def build_arg_parser():
     """Define the argparse CLI. See module docstring for usage examples."""
     p = argparse.ArgumentParser(
         prog="fetch_comments.py",
-        description="Fetch top-level YouTube comments (API-key only, stdlib only).",
+        description="Fetch top-level YouTube comments (OAuth-first, API-key "
+                    "fallback; stdlib only).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  python3 fetch_comments.py --channel @SomeCreator --api-key AIza...\n"
-            "  YOUTUBE_API_KEY=AIza... python3 fetch_comments.py "
-            "--channel UCxxxx --max-videos 50\n"
+            "  python3 youtube_login.py            # one-time sign-in\n"
+            "  python3 fetch_comments.py --mine    # YOUR channel (logged in)\n"
+            "  python3 fetch_comments.py --channel @SomeCreator\n"
             "  python3 fetch_comments.py --videos "
             "'https://youtu.be/abc,watch?v=def,ghi123'\n"
+            "  python3 fetch_comments.py --channel @X --api-key AIza...  # key fallback\n"
         ),
     )
-    # Source: exactly one of --channel / --videos is required.
+    # Source: exactly one of --mine / --channel / --videos is required.
     src = p.add_mutually_exclusive_group(required=True)
+    src.add_argument("--mine", action="store_true",
+                     help="Use YOUR OWN channel (the one you signed into with "
+                          "youtube_login.py). Resolves it via mine=true — no "
+                          "handle needed. OAuth only (won't work with just an "
+                          "API key). This is the natural default once logged in.")
     src.add_argument("--channel",
                      help="Channel handle (@name), channel ID (UC...), or "
                           "channel URL. Resolves the uploads playlist and "
@@ -781,8 +1125,9 @@ def build_arg_parser():
                           "URLs / bare IDs. Skips channel resolution entirely.")
 
     p.add_argument("--api-key",
-                   help="YouTube Data API v3 key. Falls back to "
-                        "$YOUTUBE_API_KEY, then ./.env.")
+                   help="YouTube Data API v3 key for the PUBLIC-DATA FALLBACK "
+                        "(used only if you haven't run youtube_login.py). Falls "
+                        "back to $YOUTUBE_API_KEY, then ./.env. Can't use --mine.")
     p.add_argument("--max-videos", type=int, default=25,
                    help="When using --channel, cap how many of the NEWEST "
                         "videos to scan (default 25; 0 = all — quota bomb, "
@@ -826,12 +1171,28 @@ def main(argv=None):
               "(0 = no cap).", file=sys.stderr)
         return 1
 
-    # --- Resolve the API key (clear failure if missing) --------------------
+    # --- Resolve auth: OAuth token (preferred) > API key -------------------
+    # NotAuthenticated (no token AND no key) is exit 5 — the agent must run
+    # youtube_login.py first (or supply an API key).
     try:
-        api_key = resolve_api_key(args.api_key)
-    except BadApiKey as e:
+        auth = resolve_auth(args.api_key)
+    except NotAuthenticated as e:
         print(f"ERROR: {e}", file=sys.stderr)
-        return 3
+        return 5
+
+    # --- --mine requires OAuth (it reads the signed-in user's channel) -----
+    # An API key has no associated user, so mine=true is meaningless with one.
+    # Fail fast with exit 1 (usage error) and a pointer to log in.
+    if args.mine and not auth.is_oauth:
+        print("ERROR: --mine needs an OAuth login (it reads YOUR signed-in "
+              "channel), but you're using an API key. Run "
+              "`python3 scripts/youtube_login.py` first, or target a channel "
+              "explicitly with --channel.", file=sys.stderr)
+        return 1
+
+    # Tell the creator which credential we're using (no secrets printed).
+    print("Auth: signed-in YouTube account (OAuth)." if auth.is_oauth
+          else "Auth: public API key (no login — public comments only).")
 
     # --- Build the list of videos to scan ----------------------------------
     # video_meta maps video_id -> {"title", "published_at"} for the run report.
@@ -863,9 +1224,16 @@ def main(argv=None):
             print(f"Scanning {len(video_ids)} explicitly-listed video(s).")
         else:
             # Channel path: resolve uploads playlist, then page video IDs.
-            print(f"Resolving channel {args.channel!r} ...")
-            uploads, ch_title, ch_id = resolve_channel_uploads_playlist(
-                args.channel, api_key)
+            # Two sub-cases produce the SAME (uploads, title, id) shape:
+            #   --mine     -> the signed-in creator's own channel (mine=true)
+            #   --channel  -> an explicit handle / ID / URL
+            if args.mine:
+                print("Resolving YOUR signed-in channel (mine=true) ...")
+                uploads, ch_title, ch_id = resolve_my_channel_uploads_playlist(auth)
+            else:
+                print(f"Resolving channel {args.channel!r} ...")
+                uploads, ch_title, ch_id = resolve_channel_uploads_playlist(
+                    args.channel, auth)
             label = ch_title
             max_v = args.max_videos if args.max_videos else 0
             print(f"  Channel: {ch_title} ({ch_id})")
@@ -877,7 +1245,7 @@ def main(argv=None):
             # comments. This is what the agent runs first (README Step 2/3) to
             # show the creator the size + cost and get a yes.
             if args.dry_run:
-                total = get_uploads_total(uploads, api_key)
+                total = get_uploads_total(uploads, auth)
                 scanned = total if max_v == 0 else min(total, max_v)
                 scope_desc = (f"newest {max_v}" if max_v else "ALL")
                 print(f"\nDRY RUN — {ch_title} has {total} public upload(s).")
@@ -894,7 +1262,7 @@ def main(argv=None):
 
             scope_desc = (f"newest {max_v}" if max_v else "ALL")
             print(f"  Fetching {scope_desc} video IDs ...")
-            vids = list_uploads_video_ids(uploads, api_key, max_v)
+            vids = list_uploads_video_ids(uploads, auth, max_v)
             video_ids = [v["video_id"] for v in vids]
             for v in vids:
                 video_meta[v["video_id"]] = {
@@ -922,9 +1290,21 @@ def main(argv=None):
               f"Quota resets at midnight US Pacific. Re-run then or scope smaller.",
               file=sys.stderr)
         return 2
-    except BadApiKey as e:
-        print(f"ERROR: API key problem: {e}", file=sys.stderr)
+    except BadCredential as e:
+        # Bad API key OR an OAuth token that won't authorize / refresh.
+        print(f"ERROR: authentication problem: {e}", file=sys.stderr)
+        if auth.is_oauth:
+            print("  Your sign-in may have expired or been revoked. Re-run "
+                  "`python3 scripts/youtube_login.py`.", file=sys.stderr)
+        else:
+            print("  Check the API key, ensure YouTube Data API v3 is enabled "
+                  "for its project, and remove any HTTP-referrer restriction.",
+                  file=sys.stderr)
         return 3
+    except MineRequiresOAuth as e:
+        # Defensive — main() already guards --mine, but resolve_my_* re-checks.
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
     except ChannelNotFound as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 4
@@ -942,7 +1322,7 @@ def main(argv=None):
         print(f"[{idx}/{len(video_ids)}] {label_str}({vid}) ...", flush=True)
         try:
             comments = fetch_video_comments(
-                vid, api_key,
+                vid, auth,
                 per_video_cap=args.per_video_cap,
                 include_replies=args.include_replies)
             top_level = sum(1 for c in comments if not c["is_reply"])
@@ -966,21 +1346,25 @@ def main(argv=None):
             errors.append((vid, f"video unavailable: {e}"))
             print(f"    -> video unavailable (skipping): {e}", file=sys.stderr)
 
-        except BadApiKey as e:
-            # P0-2: the --videos path does NOT run the channel-setup key probe
-            # (that only happens in resolve_channel_uploads_playlist), so a
-            # bad/disabled/referrer-restricted key first surfaces HERE, on the
-            # very first commentThreads call. A bad key won't fix itself by
-            # skipping to the next video — every call will fail the same way —
-            # so this is FATAL: stop cleanly and exit 3 pointing at README Step
-            # 1. We return directly (no partial output worth writing on a key
-            # failure — nothing was fetched).
-            print(f"ERROR: API key problem: {e}\n"
-                  f"  The key looks invalid / disabled / restricted. See README "
-                  f"Step 1: enable the YouTube Data API v3 for the key's project, "
-                  f"check the key is correct, and remove any HTTP-referrer "
-                  f"restriction (this is a server-side call, not a browser call).",
-                  file=sys.stderr)
+        except BadCredential as e:
+            # P0-2: the --videos path does NOT run the channel-setup credential
+            # probe (that only happens in resolve_*_uploads_playlist), so a
+            # bad/disabled key OR an expired/unrefreshable OAuth token first
+            # surfaces HERE, on the very first commentThreads call. It won't fix
+            # itself by skipping to the next video — every call fails the same
+            # way — so this is FATAL: stop cleanly and exit 3. We return directly
+            # (nothing was fetched, so no partial output worth writing).
+            if auth.is_oauth:
+                print(f"ERROR: your YouTube sign-in was rejected: {e}\n"
+                      f"  Re-run `python3 scripts/youtube_login.py` to sign in "
+                      f"again, then retry.", file=sys.stderr)
+            else:
+                print(f"ERROR: API key problem: {e}\n"
+                      f"  The key looks invalid / disabled / restricted. See "
+                      f"README: enable the YouTube Data API v3 for the key's "
+                      f"project, check the key is correct, and remove any "
+                      f"HTTP-referrer restriction (this is a server-side call).",
+                      file=sys.stderr)
             return 3
 
         except QuotaExceeded as e:
@@ -999,8 +1383,14 @@ def main(argv=None):
     total_top_level = sum(1 for c in all_comments if not c["is_reply"])
     run_meta = {
         "generated_at": datetime.now().isoformat(),
-        "source": "channel" if args.channel else "videos",
-        "source_arg": args.channel or args.videos,
+        # Source kind: "videos" for explicit IDs, "mine" for the signed-in
+        # creator's own channel, "channel" for an explicit handle/ID/URL.
+        "source": ("videos" if args.videos
+                   else "mine" if args.mine
+                   else "channel"),
+        # The literal arg the creator gave; for --mine there's no arg, so record
+        # the resolved channel label instead so run_meta is self-describing.
+        "source_arg": (args.videos or args.channel or f"mine:{label}"),
         "label": label,
         "videos_requested": len(video_ids),
         "videos_with_comments_fetched": len(per_video_counts),

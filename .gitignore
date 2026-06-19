@@ -9,4 +9,15 @@ __pycache__/
 # committed by accident. /out/ is the creator's local data — never commit it.
 /out/
 comments_*.json
+
+# OAuth / credential files. The real ones live in ~/.honest-comments/ (the
+# user's HOME, NOT the repo), so they're already out of the repo's reach — but
+# guard DEFENSIVELY in case someone runs the scripts from inside the repo or
+# drops a client config / token here by hand. NEVER commit a creator's OAuth
+# tokens (youtube_token.json) or the owner's downloaded Google OAuth client
+# JSON (client_config.json).
+.honest-comments/
+client_config.json
+youtube_token.json
+
 .DS_Store

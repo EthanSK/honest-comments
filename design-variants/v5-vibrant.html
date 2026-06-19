@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<!--
+  honest-comments — landing page · DESIGN VARIANT v5 "Vibrant / playful / dopamine"
+  ================================================================================
+  SINGLE self-contained file. All CSS lives in the <style> block below; all JS is
+  inline at the bottom. NO external fonts, images, or CDNs — double-click to open
+  offline and everything renders. (Brand marks are inline dependency-free SVGs.)
+
+  AUDIENCE: YouTube creators — a colourful, energetic, YouTube-native crowd.
+  VISUAL DIRECTION: bold saturated gradients, big bouncy type, playful rounded
+  geometry, floating colour "blobs", tasteful hover/scroll motion (all gated by
+  prefers-reduced-motion). High energy, but kept premium + readable, not garish.
+
+  TRUST / PRIVACY HONESTY (load-bearing — do NOT regress, see README):
+    The honest claim is "nothing goes to *honest-comments*" — NOT "nothing leaves
+    your machine". The key + fetch requests go to Google's YouTube API; the
+    comment text is classified by the creator's OWN AI provider (their existing
+    Codex/Claude plan). honest-comments has no servers and receives nothing.
+    All privacy copy below is phrased to match that exactly.
+
+  PAGE STRUCTURE (top → bottom):
+    1. Sticky nav
+    2. Hero — "Your harshest fans, ranked." + value prop + CTA + a live
+       "sentiment sorter" signature animation
+    3. Three steps (1 Get an agent · 2 Free YouTube key · 3 Paste the prompt)
+    4. Paste-prompt block w/ working copy button (verbatim from site/starter.txt)
+    5. Honest privacy section ("we see nothing")
+    6. One example-output mock — ranked insight #1 (audio too quiet …)
+    7. Footer → github.com/EthanSK/honest-comments
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>honest-comments — your harshest fans, ranked</title>
+  <meta
+    name="description"
+    content="Find the genuinely useful criticism buried in your YouTube comments. No praise, no trolls — ranked, with concrete fixes. Runs on your own Codex CLI or Claude Code; honest-comments sees nothing."
+  />
+
+  <!--
+    NO-JS SAFETY: flag <html> as JS-capable before first paint so the scroll-reveal
+    hide rule (scoped under .js) only applies when JS can actually un-hide things.
+    If this line never runs, the page renders fully visible instead of blank.
+  -->
+  <script>document.documentElement.classList.add('js');</script>
+
+  <style>
+    /* =====================================================================
+       DESIGN TOKENS — "Vibrant / playful / dopamine"
+       ---------------------------------------------------------------------
+       Base is a deep aubergine-ink (NOT pure black) so saturated accents glow
+       against it without the harsh near-black AI-default look. The "signal"
+       colour is lime-zest — it stands for the genuinely-useful criticism the
+       product keeps, and is reserved for that meaning throughout.
+       ===================================================================== */
+    :root {
+      /* --- surfaces --- */
+      --ink:        #160c2e;   /* deep aubergine base                       */
+      --ink-2:      #1f1140;   /* raised panel                              */
+      --ink-3:      #2a1857;   /* card / input                             */
+      --cream:      #fff6ec;   /* warm light card surface                  */
+
+      /* --- accents (the dopamine palette) --- */
+      --sunburst:   #ff5c39;   /* warm coral-red — primary, YouTube-warm    */
+      --punch:      #ff2e63;   /* hot magenta-pink                          */
+      --violet:     #7b5bff;   /* electric violet                          */
+      --lime:       #c6ff4a;   /* lime-zest = "kept / signal / honest"      */
+      --sky:        #37d6ff;   /* cyan pop                                 */
+
+      /* --- text --- */
+      --text:       #f4ecff;   /* primary on dark                          */
+      --muted:      #b6a9d8;   /* secondary on dark                        */
+      --faint:      #8c7eb4;   /* tertiary / captions                      */
+      --on-cream:   #2a1857;   /* text on cream cards                      */
+
+      /* --- gradients (tasteful, not clashing — warm-to-violet family) --- */
+      --grad-hot:   linear-gradient(115deg, var(--sunburst), var(--punch) 55%, var(--violet));
+      --grad-cool:  linear-gradient(125deg, var(--violet), var(--sky));
+      --grad-signal:linear-gradient(120deg, var(--lime), var(--sky));
+
+      /* --- shape language: chunky + rounded --- */
+      --r-sm: 12px;
+      --r:    20px;
+      --r-lg: 30px;
+      --r-pill: 999px;
+
+      --maxw: 1120px;
+      --shadow: 0 24px 60px -24px rgba(0,0,0,.7);
+      --glow-hot: 0 16px 50px -12px rgba(255,46,99,.55);
+
+      /* display + body share a strong system stack so the page is offline-safe;
+         personality comes from weight / scale / colour, not a downloaded font. */
+      --sans: "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, system-ui, -apple-system, sans-serif;
+      --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    }
+
+    /* ---------- reset / base ---------- */
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--text);
+      background: var(--ink);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    /* Ambient page wash: subtle multi-stop radial tints so the ink never reads flat. */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      background:
+        radial-gradient(60% 50% at 15% 0%, rgba(123,91,255,.28), transparent 60%),
+        radial-gradient(50% 45% at 90% 8%, rgba(255,92,57,.22), transparent 60%),
+        radial-gradient(60% 60% at 50% 100%, rgba(55,214,255,.14), transparent 60%);
+      pointer-events: none;
+    }
+    a { color: inherit; text-decoration: none; }
+    h1, h2, h3, h4 { margin: 0; line-height: 1.04; letter-spacing: -.02em; font-weight: 800; }
+    p { margin: 0; }
+    em { font-style: normal; color: var(--lime); }
+    strong { font-weight: 800; }
+    code {
+      font-family: var(--mono);
+      font-size: .92em;
+      background: rgba(255,255,255,.08);
+      padding: .12em .4em;
+      border-radius: 7px;
+    }
+
+    .container { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+    .section { padding: clamp(72px, 11vw, 128px) 0; position: relative; }
+
+    /* ---------- scroll reveal (only hides when JS present) ---------- */
+    .js .reveal {
+      opacity: 0;
+      transform: translateY(26px);
+      transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1);
+    }
+    .js .reveal.in { opacity: 1; transform: none; }
+
+    /* =====================================================================
+       NAV
+       ===================================================================== */
+    .nav {
+      position: sticky; top: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px;
+      padding: 14px clamp(16px, 4vw, 40px);
+      background: rgba(22,12,46,.72);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(255,255,255,.07);
+    }
+    .nav__brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.06rem; }
+    .nav__logo {
+      width: 30px; height: 30px;
+      display: grid; place-items: center;
+      border-radius: 9px;
+      background: var(--grad-hot);
+      box-shadow: var(--glow-hot);
+      flex: none;
+    }
+    .nav__logo svg { width: 19px; height: 19px; }
+    .nav__links { display: flex; align-items: center; gap: 8px; }
+    .nav__links a { padding: 8px 12px; border-radius: var(--r-pill); color: var(--muted); font-weight: 600; font-size: .92rem; transition: color .2s, background .2s; }
+    .nav__links a:hover { color: var(--text); background: rgba(255,255,255,.06); }
+    .nav__cta {
+      color: var(--ink) !important;
+      background: var(--lime);
+      font-weight: 800 !important;
+      box-shadow: 0 8px 24px -8px rgba(198,255,74,.6);
+    }
+    .nav__cta:hover { background: var(--lime) !important; transform: translateY(-1px); }
+    @media (max-width: 640px) { .nav__links a:not(.nav__cta) { display: none; } }
+
+    /* =====================================================================
+       SHARED — buttons, eyebrow, section heads
+       ===================================================================== */
+    .btn {
+      display: inline-flex; align-items: center; gap: 9px;
+      padding: 15px 26px;
+      border-radius: var(--r-pill);
+      font-weight: 800; font-size: 1.02rem;
+      cursor: pointer; border: 0;
+      transition: transform .18s cubic-bezier(.34,1.56,.64,1), box-shadow .2s, filter .2s;
+      will-change: transform;
+    }
+    .btn--primary { color: #fff; background: var(--grad-hot); box-shadow: var(--glow-hot); }
+    .btn--primary:hover { transform: translateY(-3px) scale(1.02); filter: saturate(1.1) brightness(1.05); }
+    .btn--ghost { color: var(--text); background: rgba(255,255,255,.06); border: 1.5px solid rgba(255,255,255,.16); }
+    .btn--ghost:hover { transform: translateY(-3px); background: rgba(255,255,255,.1); }
+    .btn:focus-visible, a:focus-visible, button:focus-visible {
+      outline: 3px solid var(--sky); outline-offset: 3px;
+    }
+
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-weight: 800; font-size: .76rem; letter-spacing: .14em; text-transform: uppercase;
+      color: var(--ink);
+      background: var(--grad-signal);
+      padding: 6px 14px; border-radius: var(--r-pill);
+    }
+    .section__head { max-width: 680px; margin: 0 auto clamp(40px, 6vw, 64px); text-align: center; }
+    .section__title { font-size: clamp(2rem, 5vw, 3.4rem); font-weight: 800; margin: 18px 0 14px; }
+    .section__lede { color: var(--muted); font-size: 1.12rem; }
+
+    /* =====================================================================
+       HERO
+       ===================================================================== */
+    .hero { position: relative; padding: clamp(64px, 9vw, 110px) 0 clamp(72px, 9vw, 120px); overflow: hidden; }
+
+    /* big playful colour blobs floating behind the hero */
+    .blob { position: absolute; border-radius: 50%; filter: blur(46px); opacity: .55; z-index: 0; pointer-events: none; }
+    .blob--1 { width: 460px; height: 460px; background: radial-gradient(circle, var(--punch), transparent 68%); top: -120px; right: -120px; animation: drift 16s ease-in-out infinite; }
+    .blob--2 { width: 400px; height: 400px; background: radial-gradient(circle, var(--violet), transparent 68%); bottom: -160px; left: -120px; animation: drift 19s ease-in-out infinite reverse; }
+    .blob--3 { width: 320px; height: 320px; background: radial-gradient(circle, var(--sky), transparent 70%); top: 40%; left: 44%; animation: drift 22s ease-in-out infinite; }
+    @keyframes drift {
+      0%,100% { transform: translate(0,0) scale(1); }
+      50%     { transform: translate(28px,-26px) scale(1.08); }
+    }
+
+    .hero__inner { position: relative; z-index: 1; display: grid; grid-template-columns: 1.05fr .95fr; gap: clamp(28px, 5vw, 64px); align-items: center; }
+    @media (max-width: 920px) { .hero__inner { grid-template-columns: 1fr; } }
+
+    .hero__title {
+      font-size: clamp(2.9rem, 8.5vw, 5.6rem);
+      font-weight: 800;
+      letter-spacing: -.035em;
+      margin: 22px 0 20px;
+    }
+    /* the accent word gets the full hot gradient + a tiny playful tilt */
+    .hero__accent {
+      display: inline-block;
+      background: var(--grad-hot);
+      -webkit-background-clip: text; background-clip: text;
+      color: transparent;
+      transform: rotate(-2deg);
+    }
+    .hero__sub { color: var(--muted); font-size: clamp(1.06rem, 2.2vw, 1.28rem); max-width: 33ch; margin-bottom: 26px; }
+
+    .hero__promise { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 28px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-size: .85rem; font-weight: 700; color: var(--text);
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.12);
+      padding: 7px 13px; border-radius: var(--r-pill);
+    }
+    .pill svg { width: 15px; height: 15px; color: var(--lime); flex: none; }
+    .pill strong { color: var(--lime); }
+
+    .hero__actions { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 18px; }
+    .hero__foot { font-size: .84rem; color: var(--faint); font-family: var(--mono); }
+
+    /* ---- HERO SIGNATURE: the live "sentiment sorter" ---- */
+    /* Three comment chips drop in; the genuinely-useful one snaps into the lime
+       "kept" lane while praise + troll fade — a 4s loop that literally shows what
+       the product does. Pure CSS keyframes; disabled under reduced-motion. */
+    .sorter {
+      position: relative; z-index: 1;
+      background: linear-gradient(165deg, var(--ink-2), var(--ink-3));
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: var(--r-lg);
+      padding: 22px;
+      box-shadow: var(--shadow);
+    }
+    .sorter__head { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .sorter__title { font-size: .82rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+    .sorter__lanes { display: grid; gap: 11px; }
+    .chip {
+      display: flex; align-items: center; gap: 12px;
+      padding: 13px 15px; border-radius: var(--r);
+      border: 1px solid rgba(255,255,255,.1);
+      background: rgba(255,255,255,.04);
+      font-size: .92rem;
+    }
+    .chip__tag {
+      font-size: .66rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+      padding: 4px 9px; border-radius: var(--r-pill); flex: none;
+    }
+    .chip__txt { color: var(--muted); }
+    /* praise = dropped */
+    .chip--praise .chip__tag { background: rgba(255,255,255,.1); color: var(--faint); }
+    /* troll = dropped */
+    .chip--troll  .chip__tag { background: rgba(255,46,99,.18); color: var(--punch); }
+    /* keep = the product (lime) */
+    .chip--keep {
+      background: linear-gradient(120deg, rgba(198,255,74,.16), rgba(55,214,255,.12));
+      border-color: rgba(198,255,74,.5);
+    }
+    .chip--keep .chip__tag { background: var(--lime); color: var(--ink); }
+    .chip--keep .chip__txt { color: var(--text); font-weight: 600; }
+
+    /* the loop: praise + troll dim out, keep chip pulses */
+    .sorter .chip--praise { animation: fadeOut 4.2s ease-in-out infinite; }
+    .sorter .chip--troll  { animation: fadeOut 4.2s ease-in-out .25s infinite; }
+    .sorter .chip--keep   { animation: keepPulse 4.2s ease-in-out infinite; }
+    @keyframes fadeOut {
+      0%,18% { opacity: 1; transform: none; }
+      48%,82% { opacity: .28; transform: translateX(-10px) scale(.97); }
+      100% { opacity: 1; transform: none; }
+    }
+    @keyframes keepPulse {
+      0%,18% { transform: none; box-shadow: 0 0 0 0 rgba(198,255,74,0); }
+      48% { transform: scale(1.035); box-shadow: 0 14px 40px -10px rgba(198,255,74,.45); }
+      82% { transform: scale(1.035); box-shadow: 0 14px 40px -10px rgba(198,255,74,.45); }
+      100% { transform: none; box-shadow: 0 0 0 0 rgba(198,255,74,0); }
+    }
+    .sorter__foot { margin-top: 14px; font-size: .8rem; color: var(--faint); text-align: center; }
+
+    /* =====================================================================
+       STEPS
+       ===================================================================== */
+    .steps__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px; }
+    .step {
+      display: grid; grid-template-columns: auto 1fr; gap: 22px;
+      background: linear-gradient(160deg, var(--ink-2), rgba(31,17,64,.4));
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: var(--r-lg);
+      padding: clamp(22px, 3.5vw, 36px);
+      transition: transform .3s cubic-bezier(.16,1,.3,1), border-color .3s, box-shadow .3s;
+    }
+    .step:hover { transform: translateY(-4px); border-color: rgba(255,92,57,.4); box-shadow: var(--shadow); }
+    @media (max-width: 560px) { .step { grid-template-columns: 1fr; gap: 14px; } }
+
+    /* numbered badge — 1·2·3 is a true sequence, so numbering encodes real order */
+    .step__num {
+      width: 56px; height: 56px; flex: none;
+      display: grid; place-items: center;
+      font-size: 1.7rem; font-weight: 800; color: #fff;
+      border-radius: 18px;
+      background: var(--grad-hot);
+      box-shadow: var(--glow-hot);
+    }
+    .step:nth-child(2) .step__num { background: var(--grad-cool); box-shadow: 0 16px 50px -12px rgba(123,91,255,.5); }
+    .step:nth-child(3) .step__num { background: var(--grad-signal); color: var(--ink); box-shadow: 0 16px 50px -12px rgba(198,255,74,.5); }
+    .step__title { font-size: 1.5rem; margin-bottom: 8px; }
+    .step__text { color: var(--muted); margin-bottom: 16px; }
+
+    /* agent option cards (step 1) */
+    .agent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 480px) { .agent-grid { grid-template-columns: 1fr; } }
+    .agent-card {
+      display: flex; flex-direction: column; gap: 8px;
+      padding: 18px; border-radius: var(--r);
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.1);
+      transition: transform .25s, border-color .25s, background .25s;
+    }
+    .agent-card:hover { transform: translateY(-3px); border-color: rgba(255,255,255,.28); background: rgba(255,255,255,.07); }
+    .agent-card__logo { width: 36px; height: 36px; color: var(--text); }
+    .agent-card__logo svg { width: 100%; height: 100%; }
+    .agent-card__name { font-weight: 800; font-size: 1rem; }
+    .agent-card__hint { font-size: .8rem; color: var(--faint); font-family: var(--mono); }
+
+    /* ticklist (step 2) */
+    .ticklist { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 9px; }
+    .ticklist li { position: relative; padding-left: 30px; color: var(--muted); font-size: .98rem; }
+    .ticklist li::before {
+      content: ""; position: absolute; left: 0; top: .35em;
+      width: 18px; height: 18px; border-radius: 6px;
+      background: var(--grad-signal);
+      box-shadow: inset 0 0 0 2px rgba(0,0,0,.15);
+    }
+    .ticklist li::after {
+      content: ""; position: absolute; left: 5px; top: .62em;
+      width: 8px; height: 4px; border-left: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
+      transform: rotate(-45deg);
+    }
+    .inline-link { color: var(--sky); font-weight: 700; font-size: .95rem; border-bottom: 2px solid transparent; transition: border-color .2s; }
+    .inline-link:hover { border-color: var(--sky); }
+
+    /* =====================================================================
+       PASTE-PROMPT BLOCK
+       ===================================================================== */
+    .prompt-wrap { max-width: 880px; margin: 0 auto; }
+    /* gradient "frame" around the codeblock for that hot, shareable look */
+    .codeblock {
+      border-radius: var(--r-lg);
+      background: var(--grad-hot);
+      padding: 2px;
+      box-shadow: var(--shadow);
+    }
+    .codeblock__inner { background: #120a26; border-radius: calc(var(--r-lg) - 2px); overflow: hidden; }
+    .codeblock__bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 13px 18px;
+      background: rgba(255,255,255,.04);
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .codeblock__label { font-size: .82rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 9px; }
+    .codeblock__label::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 12px var(--lime); }
+
+    .copy-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 9px 16px; border-radius: var(--r-pill);
+      font-weight: 800; font-size: .88rem; cursor: pointer;
+      color: var(--ink); background: var(--lime); border: 0;
+      transition: transform .18s cubic-bezier(.34,1.56,.64,1), filter .2s;
+    }
+    .copy-btn:hover { transform: translateY(-2px); filter: brightness(1.05); }
+    .copy-btn svg { width: 16px; height: 16px; }
+    .copy-btn.is-copied { background: var(--sky); }
+
+    .codeblock__pre {
+      margin: 0; padding: 22px;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: .86rem; line-height: 1.7;
+      color: #e8e0ff;
+      max-height: 380px; overflow-y: auto;
+      white-space: pre; tab-size: 2;
+    }
+    .codeblock__pre code { background: none; padding: 0; border-radius: 0; }
+    .prompt-note { text-align: center; margin-top: 16px; color: var(--faint); font-size: .92rem; }
+
+    /* =====================================================================
+       PRIVACY ("we see nothing")
+       ===================================================================== */
+    .privacy { position: relative; }
+    .how__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 36px; }
+    @media (max-width: 880px) { .how__grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 460px) { .how__grid { grid-template-columns: 1fr; } }
+    .feature {
+      padding: 24px; border-radius: var(--r-lg);
+      background: linear-gradient(165deg, var(--ink-2), rgba(31,17,64,.35));
+      border: 1px solid rgba(255,255,255,.08);
+      transition: transform .3s, border-color .3s;
+    }
+    .feature:hover { transform: translateY(-4px); border-color: rgba(123,91,255,.45); }
+    .feature__icon {
+      width: 46px; height: 46px; border-radius: 14px; margin-bottom: 14px;
+      display: grid; place-items: center;
+      background: rgba(123,91,255,.16); color: var(--sky);
+    }
+    .feature__icon svg { width: 24px; height: 24px; }
+    .feature h3 { font-size: 1.16rem; margin-bottom: 8px; }
+    .feature p { color: var(--muted); font-size: .95rem; }
+
+    /* the one-line "no middleman" flow */
+    .flowline {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px;
+      padding: 22px; border-radius: var(--r-lg);
+      background: rgba(255,255,255,.03); border: 1px dashed rgba(255,255,255,.16);
+    }
+    .flowline__node {
+      font-weight: 700; font-size: .92rem; padding: 9px 15px; border-radius: var(--r-pill);
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+    }
+    .flowline__node--accent { background: var(--grad-signal); color: var(--ink); font-weight: 800; border: 0; }
+    .flowline__arrow { color: var(--sunburst); font-weight: 800; }
+
+    /* =====================================================================
+       OUTPUT MOCK — the ranked digest payoff
+       ===================================================================== */
+    .digest {
+      max-width: 760px; margin: 0 auto;
+      border-radius: var(--r-lg); overflow: hidden;
+      background: #120a26;
+      border: 1px solid rgba(255,255,255,.1);
+      box-shadow: var(--shadow);
+    }
+    .digest__bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 13px 18px;
+      background: rgba(255,255,255,.04);
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+    .dot--r { background: #ff5f57; } .dot--y { background: #febc2e; } .dot--g { background: #28c840; }
+    .digest__file { margin-left: 8px; font-family: var(--mono); font-size: .82rem; color: var(--faint); }
+    .digest__body { padding: clamp(20px, 4vw, 32px); }
+    .digest__summary { color: var(--muted); margin-bottom: 22px; padding-bottom: 22px; border-bottom: 1px solid rgba(255,255,255,.08); }
+    .digest__summary strong { color: var(--text); }
+
+    .insight { }
+    .insight__head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+    .insight__rank {
+      font-size: 1.35rem; font-weight: 800; color: var(--ink);
+      background: var(--grad-hot); -webkit-background-clip: text; background-clip: text; color: transparent;
+      flex: none;
+    }
+    .insight__title { font-size: 1.22rem; flex: 1; min-width: 200px; }
+    .sev { font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; padding: 4px 10px; border-radius: var(--r-pill); flex: none; }
+    .sev--high { background: rgba(255,46,99,.18); color: #ff7da0; }
+    .insight__meta { color: var(--faint); font-size: .92rem; margin-bottom: 14px; }
+    .insight__meta strong { color: var(--lime); }
+    .insight__quote {
+      margin: 0 0 9px; padding: 11px 15px;
+      border-left: 3px solid var(--violet);
+      background: rgba(123,91,255,.1);
+      border-radius: 0 var(--r-sm) var(--r-sm) 0;
+      color: var(--muted); font-size: .94rem; font-style: italic;
+    }
+    .insight__fix { display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; color: var(--text); font-size: .98rem; }
+    .fix-tag {
+      font-size: .68rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+      color: var(--ink); background: var(--lime); padding: 4px 10px; border-radius: var(--r-pill); flex: none; margin-top: 2px;
+    }
+
+    /* harsh ≠ troll callout */
+    .harsh-note {
+      max-width: 700px; margin: 28px auto 0; text-align: center;
+      color: var(--muted); font-size: 1rem;
+    }
+    .harsh-note strong { color: var(--lime); }
+
+    /* =====================================================================
+       FINAL CTA
+       ===================================================================== */
+    .cta__card {
+      max-width: 820px; margin: 0 auto; text-align: center;
+      padding: clamp(36px, 6vw, 64px);
+      border-radius: var(--r-lg);
+      background: var(--grad-hot);
+      box-shadow: var(--glow-hot);
+      position: relative; overflow: hidden;
+    }
+    .cta__card::after {
+      content: ""; position: absolute; inset: 0; z-index: 0;
+      background: radial-gradient(60% 80% at 80% 0%, rgba(255,255,255,.25), transparent 60%);
+      pointer-events: none;
+    }
+    .cta__title { position: relative; z-index: 1; font-size: clamp(1.9rem, 5vw, 3rem); color: #fff; margin-bottom: 12px; }
+    .cta__sub { position: relative; z-index: 1; color: rgba(255,255,255,.9); font-size: 1.1rem; max-width: 46ch; margin: 0 auto 26px; }
+    .cta__actions { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
+    .cta__card .btn--primary { background: #fff; color: var(--punch); box-shadow: 0 14px 40px -12px rgba(0,0,0,.5); }
+    .cta__card .btn--ghost { border-color: rgba(255,255,255,.5); color: #fff; }
+
+    /* =====================================================================
+       FOOTER
+       ===================================================================== */
+    .footer { border-top: 1px solid rgba(255,255,255,.08); padding: 48px 0; }
+    .footer__inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px; }
+    .footer__brand { display: flex; align-items: center; gap: 10px; font-weight: 800; }
+    .footer__links { display: flex; flex-wrap: wrap; gap: 18px; }
+    .footer__links a { color: var(--muted); font-weight: 600; font-size: .92rem; transition: color .2s; }
+    .footer__links a:hover { color: var(--lime); }
+    .footer__fine { width: 100%; color: var(--faint); font-size: .85rem; font-family: var(--mono); }
+
+    /* =====================================================================
+       MOTION SAFETY — honour reduced-motion: kill all looping/scroll motion
+       ===================================================================== */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+      .js .reveal { opacity: 1 !important; transform: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================= NAV ================= -->
+  <header class="nav">
+    <a class="nav__brand" href="#top" aria-label="honest-comments home">
+      <span class="nav__logo">
+        <!-- speech bubble + rank lines -->
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5v8a2.5 2.5 0 0 1-2.5 2.5H9l-4 4v-4H5.5A2.5 2.5 0 0 1 3 13.5z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/>
+          <path d="M8 8h8M8 11h5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span>honest-comments</span>
+    </a>
+    <nav class="nav__links" aria-label="Primary">
+      <a href="#steps">Get started</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#output">What you get</a>
+      <a class="nav__cta" href="https://github.com/EthanSK/honest-comments" target="_blank" rel="noopener">GitHub ★</a>
+    </nav>
+  </header>
+
+  <main id="top">
+
+    <!-- ================= HERO ================= -->
+    <section class="hero">
+      <div class="blob blob--1" aria-hidden="true"></div>
+      <div class="blob blob--2" aria-hidden="true"></div>
+      <div class="blob blob--3" aria-hidden="true"></div>
+
+      <div class="hero__inner container">
+        <!-- left column: the pitch -->
+        <div>
+          <span class="eyebrow reveal">For YouTube creators</span>
+
+          <h1 class="hero__title reveal">
+            Your harshest fans,<br />
+            <span class="hero__accent">ranked.</span>
+          </h1>
+
+          <p class="hero__sub reveal">
+            Buried under the praise and the trolls, a handful of comments tell you
+            exactly what to fix. <strong>honest-comments</strong> digs them out,
+            dedupes them, and ranks them by how many people actually agree —
+            each paired with a concrete fix.
+          </p>
+
+          <!-- trust pills -->
+          <div class="hero__promise reveal">
+            <span class="pill">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Runs on <strong>your</strong> Codex / Claude
+            </span>
+            <span class="pill">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 12.5 11 15l4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              honest-comments sees nothing
+            </span>
+            <span class="pill">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              No backend, no sign-up
+            </span>
+          </div>
+
+          <div class="hero__actions reveal">
+            <a class="btn btn--primary" href="#steps">Start in 3 steps →</a>
+            <a class="btn btn--ghost" href="#output">See a sample report</a>
+          </div>
+
+          <!-- honest framing: nothing goes to US (not "nothing leaves your machine") -->
+          <p class="hero__foot reveal">Open source · MIT · BYO-agent · nothing goes to us — no honest-comments servers</p>
+        </div>
+
+        <!-- right column: the live "sentiment sorter" signature -->
+        <div class="sorter reveal" aria-hidden="true">
+          <div class="sorter__head">
+            <span class="dot dot--r"></span><span class="dot dot--y"></span><span class="dot dot--g"></span>
+            <span class="sorter__title">sorting your comments…</span>
+          </div>
+          <div class="sorter__lanes">
+            <div class="chip chip--praise">
+              <span class="chip__tag">Praise</span>
+              <span class="chip__txt">"omg best video everrr 🔥🔥"</span>
+            </div>
+            <div class="chip chip--troll">
+              <span class="chip__tag">Troll</span>
+              <span class="chip__txt">"ratio + you fell off lol"</span>
+            </div>
+            <div class="chip chip--keep">
+              <span class="chip__tag">Keep</span>
+              <span class="chip__txt">"audio's too quiet, your voice clips"</span>
+            </div>
+          </div>
+          <p class="sorter__foot">Only the useful-but-harsh stuff survives.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= STEPS ================= -->
+    <section class="steps section" id="steps">
+      <div class="container">
+        <header class="section__head reveal">
+          <span class="eyebrow">Setup · about 3 minutes</span>
+          <h2 class="section__title">Three steps to honest feedback</h2>
+          <p class="section__lede">You bring the agent and a free key. We bring the operating manual. Nothing to install beyond a CLI you might already have.</p>
+        </header>
+
+        <ol class="steps__list">
+          <!-- STEP 1 — get an agent -->
+          <li class="step reveal">
+            <div class="step__num">1</div>
+            <div class="step__body">
+              <h3 class="step__title">Get Codex CLI or Claude Code</h3>
+              <p class="step__text">honest-comments runs <em>inside</em> an AI coding agent you control. Pick whichever you already pay for — it orchestrates the whole flow locally and does the analysis using the subscription you already have.</p>
+              <div class="agent-grid">
+                <a class="agent-card" href="https://developers.openai.com/codex/cli/" target="_blank" rel="noopener">
+                  <!-- OFFICIAL BRAND MARK — OpenAI "knot" glyph, inline SVG (works-with attribution only) -->
+                  <span class="agent-card__logo" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.55 9.84a5.4 5.4 0 0 0-.46-4.42 5.43 5.43 0 0 0-5.86-2.6A5.4 5.4 0 0 0 11.1 1a5.43 5.43 0 0 0-5.18 3.76A5.4 5.4 0 0 0 2.3 7.37a5.43 5.43 0 0 0 .67 6.37 5.4 5.4 0 0 0 .46 4.42 5.43 5.43 0 0 0 5.86 2.6A5.4 5.4 0 0 0 13.42 23a5.43 5.43 0 0 0 5.18-3.77 5.4 5.4 0 0 0 3.61-2.61 5.43 5.43 0 0 0-.67-6.78ZM13.42 21.6a4.03 4.03 0 0 1-2.59-.94l3.83-2.21a.63.63 0 0 0 .31-.55v-5.4l1.62.94v4.46a4.05 4.05 0 0 1-3.18 3.7ZM5.18 18a4.03 4.03 0 0 1-.48-2.72l3.83 2.22a.63.63 0 0 0 .63 0l6.59-3.8v1.87l-4.69 2.71a4.05 4.05 0 0 1-5.48-1.48Zm-1-8.32a4.03 4.03 0 0 1 2.11-1.77v4.5a.63.63 0 0 0 .32.55l6.58 3.8-1.62.93-4.69-2.7a4.05 4.05 0 0 1-1.71-5.31Zm14.4 3.35-6.59-3.81 1.62-.93 4.69 2.7a4.04 4.04 0 0 1-.62 7.29v-4.5a.63.63 0 0 0-.32-.55Zm1.61-2.42-3.83-2.22a.63.63 0 0 0-.63 0l-6.59 3.8V10.4l4.69-2.7a4.04 4.04 0 0 1 6 4.19Zm-14.27.92-1.62-.94V6.34a4.04 4.04 0 0 1 6.63-3.1l-3.83 2.2a.63.63 0 0 0-.31.56Zm.88-1.9 2.93-1.7 2.94 1.7v3.39l-2.94 1.7-2.93-1.7Z"/></svg>
+                  </span>
+                  <span class="agent-card__name">OpenAI Codex CLI</span>
+                  <span class="agent-card__hint">developers.openai.com →</span>
+                </a>
+                <a class="agent-card" href="https://www.anthropic.com/claude-code" target="_blank" rel="noopener">
+                  <!-- OFFICIAL BRAND MARK — Anthropic "burst" glyph, inline SVG (works-with attribution only) -->
+                  <span class="agent-card__logo" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.4c.34 0 .62.27.63.61l.2 5.42 2.7-4.7a.63.63 0 0 1 1.1.63l-2.7 4.7 4.36-3.23a.63.63 0 0 1 .77.99l-4.36 3.22 5.22-1.46a.63.63 0 0 1 .35 1.21l-5.22 1.46 5.4.36a.63.63 0 0 1 0 1.26l-5.4.36 5.22 1.46a.63.63 0 0 1-.35 1.21l-5.22-1.46 4.36 3.22a.63.63 0 0 1-.77.99l-4.36-3.23 2.7 4.7a.63.63 0 0 1-1.1.63l-2.7-4.7-.2 5.42a.63.63 0 0 1-1.26 0l-.2-5.42-2.7 4.7a.63.63 0 0 1-1.1-.63l2.7-4.7-4.36 3.23a.63.63 0 0 1-.77-.99l4.36-3.22-5.22 1.46a.63.63 0 0 1-.35-1.21l5.22-1.46-5.4-.36a.63.63 0 0 1 0-1.26l5.4-.36-5.22-1.46a.63.63 0 0 1 .35-1.21l5.22 1.46-4.36-3.22a.63.63 0 0 1 .77-.99l4.36 3.23-2.7-4.7a.63.63 0 0 1 1.1-.63l2.7 4.7.2-5.42c.01-.34.29-.61.63-.61Z"/></svg>
+                  </span>
+                  <span class="agent-card__name">Anthropic Claude Code</span>
+                  <span class="agent-card__hint">anthropic.com →</span>
+                </a>
+              </div>
+            </div>
+          </li>
+
+          <!-- STEP 2 — free YouTube API key -->
+          <li class="step reveal">
+            <div class="step__num">2</div>
+            <div class="step__body">
+              <h3 class="step__title">Get a free YouTube API key</h3>
+              <p class="step__text">A plain Google Cloud API key (public data only — no OAuth, no consent screen). It reads <em>public</em> comments on <em>public</em> videos. The key lives in your env/<code>.env</code> and is used only to call Google's YouTube API — it never goes to honest-comments. The agent walks you through it the first time, or you can follow the README.</p>
+              <ul class="ticklist">
+                <li>Create a project in the Google Cloud console</li>
+                <li>Enable <strong>YouTube Data API v3</strong></li>
+                <li>Create an API key, then set it as the <code>YOUTUBE_API_KEY</code> environment variable or drop it in a <code>.env</code> file <em>(recommended — keeps it out of chat logs)</em></li>
+                <li>Or just paste it to your agent — it's your key; the script uses it to call Google's YouTube API and it never goes to honest-comments</li>
+              </ul>
+              <a class="inline-link" href="https://github.com/EthanSK/honest-comments#step-1--get-a-free-youtube-data-api-key" target="_blank" rel="noopener">Full key walkthrough in the README →</a>
+            </div>
+          </li>
+
+          <!-- STEP 3 — paste the prompt -->
+          <li class="step reveal">
+            <div class="step__num">3</div>
+            <div class="step__body">
+              <h3 class="step__title">Paste the prompt</h3>
+              <p class="step__text">Drop the starter prompt below into Codex CLI or Claude Code. It clones the repo, fetches the operating manual, and takes it from there — greeting you, helping with the key, fetching comments, and delivering the ranked digest.</p>
+              <a class="inline-link" href="#prompt">Jump to the prompt ↓</a>
+            </div>
+          </li>
+        </ol>
+
+        <!-- ====== PASTE-PROMPT BLOCK ====== -->
+        <div class="prompt-wrap reveal" id="prompt" style="margin-top:32px;">
+          <div class="codeblock" data-copy-block>
+            <div class="codeblock__inner">
+              <div class="codeblock__bar">
+                <span class="codeblock__label">Starter prompt</span>
+                <button class="copy-btn" type="button" data-copy-btn aria-label="Copy starter prompt">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5 15V5a2 2 0 0 1 2-2h10" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+                  <span class="copy-btn__text">Copy</span>
+                </button>
+              </div>
+              <!--
+                The text inside <code data-copy-source> is copied VERBATIM and must
+                stay byte-identical to site/starter.txt. In HTML the literal "&&"
+                is written as "&amp;&amp;"; the copy JS reads .textContent, which
+                un-escapes it back to "&&" so the clipboard gets the exact original.
+              -->
+              <pre class="codeblock__pre"><code data-copy-source>You are running "honest-comments". Your VERY FIRST action: clone the repo and
+work from inside it (the script and prompts live there, not in this folder):
+
+  git clone https://github.com/EthanSK/honest-comments &amp;&amp; cd honest-comments
+
+If git is unavailable, download and unzip the repo instead, then cd into it:
+
+  curl -L -o honest-comments.zip https://github.com/EthanSK/honest-comments/archive/refs/heads/main.zip
+  unzip honest-comments.zip &amp;&amp; cd honest-comments-main
+
+Then read README.md from this local checkout in full and follow it as your
+instructions. Run every later command from inside this cloned directory.
+
+I'm a YouTube creator. Your job: dig through my comments and surface the
+criticism that's actually worth acting on — ranked, with concrete fixes. Skip
+the praise, filter out the trolls, and don't soften the useful-but-harsh stuff.
+
+Once you've read the manual, run the whole flow conversationally:
+1. Greet me and explain what you're about to do.
+2. Help me get a free YouTube Data API key if I don't already have one.
+   Prefer setting it as an env var or in a .env file so it stays out of chat
+   logs; the script uses it to call Google's YouTube API. It never goes to
+   honest-comments.
+3. Ask whether I want my whole channel or specific videos, and confirm scope
+   (run scripts/fetch_comments.py with --dry-run to show me the quota estimate)
+   before fetching anything.
+4. Run scripts/fetch_comments.py to pull my comments.
+5. Apply prompts/analyze.md to classify, dedupe, cluster, and rank the
+   constructive criticism — ignoring praise and trolls.
+6. Deliver the ranked harsh-but-useful takes, then offer to go deeper.
+
+Be honest, not nice. Begin now by greeting me.</code></pre>
+            </div>
+          </div>
+          <p class="prompt-note">That's the whole onboarding — one paste, one instruction. Updates ship via the README, so you never re-paste.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= PRIVACY ================= -->
+    <section class="privacy section" id="privacy">
+      <div class="container">
+        <header class="section__head reveal">
+          <span class="eyebrow">The honest part</span>
+          <h2 class="section__title">Why <em>we</em> see nothing</h2>
+          <p class="section__lede">There's no "we" in the data path — honest-comments is just a GitHub repo and this page, with no servers. Your key talks to Google's YouTube API to fetch comments, and your own AI (the Codex/Claude plan you already pay for) classifies them — exactly like any prompt you send it. Nothing routes through us.</p>
+        </header>
+
+        <div class="how__grid">
+          <article class="feature reveal">
+            <div class="feature__icon"><svg viewBox="0 0 24 24"><path d="M12 2 3 6v6c0 5 4 8.5 9 10 5-1.5 9-5 9-10V6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></div>
+            <h3>BYO-agent</h3>
+            <p>The analysis runs in <em>your</em> Codex CLI or Claude Code. We never run a model on your behalf — there's nothing for us to log.</p>
+          </article>
+          <article class="feature reveal">
+            <div class="feature__icon"><svg viewBox="0 0 24 24"><path d="M4 7h16v12H4z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 7 7 3h10l3 4M9 12h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></div>
+            <h3>No backend</h3>
+            <p>No servers, no database, no API key of ours. Fetched comments save to a local <code>out/</code> folder; your YouTube key lives in your env and only ever reaches Google's YouTube API.</p>
+          </article>
+          <article class="feature reveal">
+            <div class="feature__icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+            <h3>Your subscription</h3>
+            <p>It uses the AI plan you already pay for. No new account, no per-use billing from us, no surprise costs.</p>
+          </article>
+          <article class="feature reveal">
+            <div class="feature__icon"><svg viewBox="0 0 24 24"><path d="M9 3 3 9l6 6M15 3l6 6-6 6M12 4l-2 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <h3>Open source</h3>
+            <p>Every line is on GitHub under MIT. The fetch script is stdlib-only Python — read it, fork it, run it offline if you like.</p>
+          </article>
+        </div>
+
+        <!-- concrete "no middleman" flow -->
+        <div class="flowline reveal" aria-label="Data flow">
+          <span class="flowline__node">Your agent</span>
+          <span class="flowline__arrow">→</span>
+          <span class="flowline__node">Your YouTube key</span>
+          <span class="flowline__arrow">→</span>
+          <span class="flowline__node">Comments on your disk</span>
+          <span class="flowline__arrow">→</span>
+          <span class="flowline__node flowline__node--accent">Ranked digest</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= OUTPUT MOCK ================= -->
+    <section class="output section" id="output">
+      <div class="container">
+        <header class="section__head reveal">
+          <span class="eyebrow">The payoff</span>
+          <h2 class="section__title">What lands in your terminal</h2>
+          <p class="section__lede">Not sentiment. Not a word cloud. A ranked list of the things real people are asking you to fix — most-agreed-upon first, each paired with a concrete fix.</p>
+        </header>
+
+        <!-- Mocked digest: faked-but-realistic example, illustrative numbers -->
+        <div class="digest reveal">
+          <div class="digest__bar">
+            <span class="dot dot--r"></span><span class="dot dot--y"></span><span class="dot dot--g"></span>
+            <span class="digest__file">honest-comments · @YourChannel · newest 25 videos</span>
+          </div>
+          <div class="digest__body">
+            <p class="digest__summary">Of <strong>4,210 comments</strong>: ~3,100 praise, ~260 trolls filtered out. These <strong>6 themes</strong> are the signal worth acting on.</p>
+
+            <article class="insight">
+              <div class="insight__head">
+                <span class="insight__rank">#1</span>
+                <h3 class="insight__title">Audio too quiet / voice gets buried</h3>
+                <span class="sev sev--high">High</span>
+              </div>
+              <p class="insight__meta"><strong>11 people</strong> raised this · <strong>+340 likes</strong></p>
+              <blockquote class="insight__quote">"Great info but I had to max my volume and your voice still clips."</blockquote>
+              <blockquote class="insight__quote">"bg music way louder than you the whole video"</blockquote>
+              <p class="insight__fix">
+                <span class="fix-tag">Fix</span>
+                Raise voice gain ~-14&nbsp;LUFS integrated and add a compressor. Duck music ~12&nbsp;dB under your voice.
+              </p>
+            </article>
+          </div>
+        </div>
+
+        <p class="harsh-note reveal"><strong>Harsh ≠ troll.</strong> A brutal comment with a real, fixable point is <em>constructive</em>. Tone is never the classifier — that's the line everyone else gets wrong.</p>
+      </div>
+    </section>
+
+    <!-- ================= FINAL CTA ================= -->
+    <section class="cta section">
+      <div class="container">
+        <div class="cta__card reveal">
+          <h2 class="cta__title">Find out what they actually think.</h2>
+          <p class="cta__sub">Paste one prompt into the agent you already use. Get the criticism worth hearing in about three minutes.</p>
+          <div class="cta__actions">
+            <a class="btn btn--primary" href="#prompt">Grab the prompt →</a>
+            <a class="btn btn--ghost" href="https://github.com/EthanSK/honest-comments" target="_blank" rel="noopener">Read the source</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <span class="nav__logo">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5v8a2.5 2.5 0 0 1-2.5 2.5H9l-4 4v-4H5.5A2.5 2.5 0 0 1 3 13.5z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/>
+            <path d="M8 8h8M8 11h5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span>honest-comments</span>
+      </div>
+      <nav class="footer__links" aria-label="Footer">
+        <a href="https://github.com/EthanSK/honest-comments" target="_blank" rel="noopener">GitHub repo</a>
+        <a href="https://github.com/EthanSK/honest-comments/blob/main/README.md" target="_blank" rel="noopener">README</a>
+        <a href="https://github.com/EthanSK/honest-comments/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+      </nav>
+      <p class="footer__fine">© 2026 · MIT licensed · We host nothing &amp; see nothing.</p>
+    </div>
+  </footer>
+
+  <!-- ===================================================================
+       INLINE JS — two jobs only, both tiny + dependency-free:
+         1. Scroll-reveal: IntersectionObserver adds .in to .reveal elements.
+         2. Copy button: copies the verbatim starter prompt to the clipboard,
+            with a graceful execCommand fallback for non-secure contexts
+            (file:// double-click counts as non-secure for navigator.clipboard).
+       =================================================================== */ -->
+  <script>
+    (function () {
+      'use strict';
+
+      /* ---- 1. Scroll reveal ---- */
+      var revealEls = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
+      if ('IntersectionObserver' in window && revealEls.length) {
+        var io = new IntersectionObserver(function (entries) {
+          entries.forEach(function (e) {
+            if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+          });
+        }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+        revealEls.forEach(function (el) { io.observe(el); });
+      } else {
+        // No IO support → just show everything (never leave content hidden).
+        revealEls.forEach(function (el) { el.classList.add('in'); });
+      }
+
+      /* ---- 2. Copy starter prompt ---- */
+      var btn = document.querySelector('[data-copy-btn]');
+      var src = document.querySelector('[data-copy-source]');
+      if (btn && src) {
+        var label = btn.querySelector('.copy-btn__text');
+        btn.addEventListener('click', function () {
+          // .textContent un-escapes the &amp;&amp; back to the original "&&".
+          var text = src.textContent;
+
+          function done(ok) {
+            if (!ok) return;
+            btn.classList.add('is-copied');
+            if (label) label.textContent = 'Copied!';
+            setTimeout(function () {
+              btn.classList.remove('is-copied');
+              if (label) label.textContent = 'Copy';
+            }, 1800);
+          }
+
+          // Prefer the async Clipboard API; fall back to execCommand for file://.
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+          } else {
+            fallback();
+          }
+
+          function fallback() {
+            try {
+              var ta = document.createElement('textarea');
+              ta.value = text;
+              ta.setAttribute('readonly', '');
+              ta.style.position = 'fixed';
+              ta.style.opacity = '0';
+              document.body.appendChild(ta);
+              ta.select();
+              // execCommand returns false if the copy was blocked — check it.
+              var ok = document.execCommand('copy');
+              document.body.removeChild(ta);
+              done(ok);
+            } catch (err) {
+              done(false);
+            }
+          }
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
