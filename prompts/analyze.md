@@ -30,6 +30,7 @@ Load the newest `out/comments_*.json`. Each element has these fields (and only t
 - `like_count` — how many viewers liked it (a proxy for silent agreement).
 - `published_at` — timestamp.
 - `reply_count` — number of replies on the thread.
+- `is_reply` — `false` for a top-level comment, `true` for a reply (only present when the fetch ran with `--include-replies`; default runs are all top-level / `false`). Replies are mostly creator-replies and noise — weight them lightly, or ignore for the first pass.
 
 Also load `out/run_meta.json` for context (videos fetched, comments-disabled list, total comment count) — you'll cite these totals in the closing framing line (§6, step 7).
 

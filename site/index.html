@@ -175,8 +175,8 @@
               <h3 class="step__title">Get Codex CLI or Claude Code</h3>
               <p class="step__text">
                 honest-comments runs <em>inside</em> an AI coding agent you control.
-                Pick whichever you already pay for — it does all the fetching and
-                analysis on your machine, using your subscription.
+                Pick whichever you already pay for — it orchestrates the whole flow
+                locally and does the analysis using the subscription you already have.
               </p>
 
               <!-- Two agent option cards, each with an inline LOGO PLACEHOLDER SVG -->
@@ -376,8 +376,9 @@ Be honest, not nice. Begin now by greeting me.</code></pre>
             </div>
             <h3>No backend</h3>
             <p>
-              No servers, no database, no API key of ours. Your YouTube key and your
-              fetched comments live only on your disk, in a local <code>out/</code> folder.
+              No servers, no database, no API key of ours. Your fetched comments are saved
+              to a local <code>out/</code> folder; your YouTube key lives in your env/<code>.env</code>
+              and is only ever sent to Google's YouTube API. Nothing routes through honest-comments.
             </p>
           </article>
 
