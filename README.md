@@ -83,7 +83,7 @@ If not, walk the creator through this **verbatim**:
    ```
    export YOUTUBE_API_KEY="their-key-here"
    ```
-   in the same terminal, OR put it in a `.env` file in the working directory. If they'd rather just paste it to you, that's fine too — but explicitly remind them it's *their* key, lives only on their machine, and is never sent to us.
+   in the same terminal, OR put it in a `.env` file in the working directory. If they'd rather just paste it to you, that's fine too — but explicitly remind them it's *their* key: the script uses it to call **Google's YouTube API** (that's the one place it goes), it's never sent to honest-comments, and the env-var/`.env` path keeps it out of chat logs.
 
 The script reads the key in this priority order: `--api-key` flag → `$YOUTUBE_API_KEY` → `.env` file in the current directory. It never hardcodes or logs the key.
 

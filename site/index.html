@@ -256,7 +256,7 @@
                   a <code>.env</code> file <em>(recommended — keeps it out of
                   chat logs)</em>
                 </li>
-                <li>Or, if you prefer, just paste it to your agent — it's your key and stays on your machine</li>
+                <li>Or, if you prefer, just paste it to your agent — it's your key; the script uses it to call Google's YouTube API and it never goes to honest-comments</li>
               </ul>
 
               <a
@@ -316,8 +316,10 @@ the praise, filter out the trolls, and don't soften the useful-but-harsh stuff.
 
 Once you've read the manual, run the whole flow conversationally:
 1. Greet me and explain what you're about to do.
-2. Help me get a free YouTube Data API key if I don't already have one
-   (it lives only on my machine — never send it anywhere).
+2. Help me get a free YouTube Data API key if I don't already have one.
+   Prefer setting it as an env var or in a .env file so it stays out of chat
+   logs; the script uses it to call Google's YouTube API. It never goes to
+   honest-comments.
 3. Ask whether I want my whole channel or specific videos, and confirm scope
    (run scripts/fetch_comments.py with --dry-run to show me the quota estimate)
    before fetching anything.

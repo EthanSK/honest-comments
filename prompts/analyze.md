@@ -141,15 +141,23 @@ Classify the raw comments in **batches of ~40–60** (per §2.2). Append each ba
   "text": "the audio is way too quiet",   // verbatim, for later example-quoting
   "likes": 12,                             // = like_count
   "bucket": "constructive",                // one of: "praise" | "troll" | "constructive"
-  "canonical_claim": "audio too quiet"     // REQUIRED for "constructive"; null/omit for praise|troll
+  "canonical_claim": "audio too quiet",    // REQUIRED for "constructive"; null/omit for praise|troll
+  "severity": 4,                           // 1–5 (§2.2); REQUIRED for "constructive"; null/omit otherwise
+  "actionability": 4                       // 1–5 (§2.2); REQUIRED for "constructive"; null/omit otherwise
 }
 ```
+
+> **Why severity + actionability live in the MAP record:** REDUCE 1 averages them
+> into `avg_severity` / `avg_actionability` per claim, and the §5 ranking formula
+> uses them. If you don't capture them here at classification time you'd have to
+> re-read every comment later — defeating the whole map/reduce point. Capture them
+> in the same pass that assigns the bucket.
 
 Only `bucket: "constructive"` records carry a `canonical_claim`. Praise/troll records still get written (so the closing-framing totals in §6 step 7 are exact), just with no claim.
 
 #### REDUCE 1 — `out/claims.json`
 
-In ONE reasoning pass over all `constructive` records, merge semantically-identical `canonical_claim`s into **distinct claims** (per §3). Write `out/claims.json` — **one record per distinct claim**:
+Merge semantically-identical `canonical_claim`s into **distinct claims** (per §3), then write `out/claims.json` — **one record per distinct claim**. **For large channels, do this chunked so you never hold every constructive record in context at once:** first read just the `canonical_claim` strings across all `out/classified_*.json` files (cheap — one short string per record) and reduce them to a deduped list of distinct claims; then, claim by claim, scan the classified files for the supporting records and aggregate that claim's `comment_ids`, `identity` set, `sum_likes`, `avg_severity`, `avg_actionability`. That way each step touches only one claim's worth of detail, and a few-hundred-comment channel can still be done in a single pass if it fits. Record schema:
 
 ```json
 {
