@@ -356,25 +356,30 @@ def _parse_channel_arg(channel_arg):
     if arg.startswith("http://") or arg.startswith("https://"):
         parsed = urllib.parse.urlparse(arg)
         path = parsed.path.strip("/")
-        # /@handle
-        if path.startswith("@"):
-            return path, "", ""
-        parts = path.split("/")
+        parts = [p for p in path.split("/") if p]   # drop empty segments
+        # BUG GUARD: a copied channel URL almost always carries a trailing tab
+        # segment — youtube.com/@SomeCreator/videos, /@Name/streams, /UC.../about.
+        # We must classify on the FIRST path segment only; if we returned the raw
+        # path we'd hand YouTube the handle "@SomeCreator/videos" (with the slash),
+        # which forHandle rejects -> the channel "doesn't resolve". So everything
+        # below keys off parts[0] (the identity) and ignores parts[1:] (the tab).
+        if not parts:
+            raise ChannelNotFound(f"Couldn't parse channel URL: {arg!r}")
+        first = parts[0]
+        # /@handle  (the modern URL shape)
+        if first.startswith("@"):
+            return first, "", ""
+        # /channel/UC... , /user/LegacyName , /c/Vanity  (two-segment shapes)
         if len(parts) >= 2:
             kind, value = parts[0], parts[1]
             if kind == "channel":
-                return "", value, ""        # /channel/UC...
+                return "", value, ""         # /channel/UC...
             if kind == "user":
                 return "", "", value         # /user/LegacyName
             if kind in ("c", "@"):
                 return value, "", ""         # /c/Vanity -> try as handle
-        # Bare /@handle already handled; otherwise treat last segment as handle.
-        if parts and parts[-1]:
-            seg = parts[-1]
-            if seg.startswith("@"):
-                return seg, "", ""
-            return seg, "", ""
-        raise ChannelNotFound(f"Couldn't parse channel URL: {arg!r}")
+        # Single bare segment (e.g. youtube.com/SomeName) -> treat as a handle.
+        return first, "", ""
 
     # Not a URL.
     if arg.startswith("@"):
