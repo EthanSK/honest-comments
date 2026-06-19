@@ -26,7 +26,7 @@ Load the newest `out/comments_*.json`. Each element has these fields (and only t
 - `video_id` — which video it's on.
 - `text` — the comment body (plain text).
 - `author` — display name (NOT a reliable identity; names collide).
-- `author_channel_id` — **the identity key. This is how you count "distinct people." Names lie; channel IDs don't.**
+- `author_channel_id` — **the identity key. This is how you count "distinct people." Names lie; channel IDs don't.** It can occasionally be **missing/blank** (the API doesn't always return it). When it's blank, do NOT treat all blank-id comments as one person — that would collapse dozens of distinct anonymous voices into a single voice and badly undercount a theme. Instead use a **synthetic identity** of `"missing:" + comment_id` so each anonymous comment counts as its own distinct voice. Define this once and apply it everywhere you count distinct people (see §3 and the schemas in §2.5).
 - `like_count` — how many viewers liked it (a proxy for silent agreement).
 - `published_at` — timestamp.
 - `reply_count` — number of replies on the thread.
@@ -109,6 +109,84 @@ Process the remaining comments in **batches of ~40–60 per model pass** (keeps 
 
 Keep `like_count` and `author_channel_id` attached to every bucket-B comment — both feed ranking.
 
+### 2.5 MAP / REDUCE — work through files, not all in context at once
+
+**This is operationally critical.** Real channels return thousands of comments — far more than you can hold in context at once. If you try to load every comment and reason over them in one pass you WILL stall, truncate, or hallucinate counts. So you process incrementally and **write intermediate JSON files to `out/`**, in this exact pipeline:
+
+```
+out/comments_*.json   (input: raw fetched comments)
+        │  MAP: classify in batches
+        ▼
+out/classified_*.json (one record per comment, bucket + canonical_claim)
+        │  REDUCE 1: collapse claims
+        ▼
+out/claims.json       (one record per distinct canonical claim)
+        │  REDUCE 2: cluster claims into themes
+        ▼
+out/themes.json       (one record per theme — ready to rank + deliver)
+```
+
+Each stage reads the file the previous stage wrote and appends/writes the next file. You never need more than one batch of raw comments in context at a time, and you can resume mid-run if interrupted.
+
+#### MAP — `out/classified_<label>_<batch>.json`
+
+Classify the raw comments in **batches of ~40–60** (per §2.2). Append each batch's results to `out/classified_*.json` as you go (one file per source label, or one per batch — either is fine; the reduce step globs them all). **One record per comment**, schema:
+
+```json
+{
+  "comment_id": "UgxAbc123",
+  "video_id": "dQw4w9WgXcQ",
+  "author_channel_id": "UCxxxx",          // raw value; may be "" if blank
+  "identity": "UCxxxx",                    // = author_channel_id, OR "missing:<comment_id>" when blank (§3 rule)
+  "text": "the audio is way too quiet",   // verbatim, for later example-quoting
+  "likes": 12,                             // = like_count
+  "bucket": "constructive",                // one of: "praise" | "troll" | "constructive"
+  "canonical_claim": "audio too quiet"     // REQUIRED for "constructive"; null/omit for praise|troll
+}
+```
+
+Only `bucket: "constructive"` records carry a `canonical_claim`. Praise/troll records still get written (so the closing-framing totals in §6 step 7 are exact), just with no claim.
+
+#### REDUCE 1 — `out/claims.json`
+
+In ONE reasoning pass over all `constructive` records, merge semantically-identical `canonical_claim`s into **distinct claims** (per §3). Write `out/claims.json` — **one record per distinct claim**:
+
+```json
+{
+  "canonical_claim": "audio too quiet",
+  "comment_ids": ["UgxAbc123", "UgxDef456"],          // every comment supporting this claim
+  "distinct_author_channel_ids": ["UCxxxx", "missing:UgxDef456"],  // dedup of `identity` (NOT raw channel id — applies the blank-id rule)
+  "distinct_commenters": 2,                            // = len(distinct_author_channel_ids)
+  "sum_likes": 47,                                     // summed `likes` across comment_ids
+  "avg_severity": 4.0,                                 // averaged over supporting comments
+  "avg_actionability": 4.5
+}
+```
+
+`distinct_commenters` is the length of the deduped `identity` set — this is where the "1 obsessive commenter ≠ 5 voices" and "each blank-id comment is its own voice" rules actually bite.
+
+#### REDUCE 2 — `out/themes.json`
+
+Cluster the distinct claims onto the §4 taxonomy. Write `out/themes.json` — **one record per theme**:
+
+```json
+{
+  "theme": "Audio",
+  "claims": ["audio too quiet", "background music too loud"],   // canonical_claims rolled up
+  "distinct_commenters": 11,            // distinct identities ACROSS all the theme's claims (re-dedup; don't just sum claim counts — the same person may span two claims)
+  "total_likes": 340,                   // summed likes across the theme's comments
+  "avg_severity": 4.2,
+  "avg_actionability": 4.0,
+  "severity": "high",                   // low|medium|high bucket of avg_severity, for display
+  "example_comment_ids": ["UgxAbc123", "UgxGhi789"],   // 2–3 clearest/highest-liked, for verbatim quoting in §6
+  "suggested_fix": "Raise voice gain, add a compressor, target ~-14 LUFS; duck music ~12 dB."
+}
+```
+
+**Important:** `theme.distinct_commenters` must be a fresh dedup of identities across ALL comments in the theme — one person who complained about two different audio things counts **once**, not twice.
+
+You then rank `out/themes.json` (§5) and deliver from it (§6), pulling the verbatim example `text` for each `example_comment_id` back out of `out/classified_*.json`.
+
 ---
 
 ## 3. DEDUPE — collapse near-identical critiques into distinct POINTS
@@ -118,6 +196,7 @@ Many people say the same thing in different words. You want **distinct points**,
 - **Dedupe on the canonical `claim`, never on raw text.** Two comments with the same `claim` ("audio too quiet") are the SAME critique even if worded completely differently.
 - Do this as a single "merge these claims into distinct points" reasoning pass over all bucket-B `claim`s. You ARE the LLM — semantic grouping in one pass is simpler and better than embeddings/cosine math, and adds no dependencies.
 - **Count distinctness by `author_channel_id`, NEVER by comment count.** If one person leaves the same complaint three times, that's **1** distinct voice — not 3. This stops a single obsessive (or angry) commenter from inflating a theme.
+- **Blank `author_channel_id` → synthetic identity.** When `author_channel_id` is missing/empty, use `"missing:" + comment_id` as the identity. Each anonymous comment is then its OWN distinct voice (they're different people), instead of all blanks collapsing into one undercounted "person". Apply this exact rule wherever you compute `distinct_author_channel_ids` in the schemas below.
 
 ---
 
@@ -127,11 +206,11 @@ Map the distinct points onto this seed taxonomy (you may add a new theme if some
 
 `Audio` · `Video/Lighting` · `Pacing/Length` · `Structure/Clarity` · `Factual Accuracy` · `On-screen Text/Legibility` · `Thumbnail/Title` · `Captions/Accessibility` · `Description/Links/Timestamps` · `Content Depth` · `Other`
 
-For each theme, aggregate:
-- `distinct_commenters` — count of distinct `author_channel_id`s across all comments in the theme.
-- `sum_likes` — total `like_count` across the theme's comments.
+For each theme, aggregate (this is exactly the `out/themes.json` record from §2.5 REDUCE 2):
+- `distinct_commenters` — count of distinct identities (per §3: `author_channel_id`, or `"missing:"+comment_id` when blank) across all comments in the theme. **Re-dedup across the theme** — one person spanning two of the theme's claims counts once.
+- `total_likes` — total `like_count` across the theme's comments.
 - `avg_severity` and `avg_actionability` — averaged over the theme's deduped claims.
-- 2–3 **representative verbatim examples** — real, unedited `text` strings pulled straight from `out/*.json` (favour the clearest-stated and/or highest-liked).
+- `example_comment_ids` — 2–3 **representative** comments (clearest-stated and/or highest-liked); you quote their verbatim `text` (looked up from `out/classified_*.json`) in §6. Never paraphrase into quotes.
 - a concrete **suggested fix** (see §6).
 
 ---
@@ -141,17 +220,23 @@ For each theme, aggregate:
 Score each theme with this blended formula and sort **descending**:
 
 ```
-theme_score =  (distinct_commenters  × 3)     # consensus dominates
-             + (min(sum_likes, CAP)  × 0.5)   # silent agreement, capped so one viral comment can't dominate
-             + (avg_severity         × 2)     # how badly it hurts the experience
-             + (avg_actionability    × 2)     # how fixable it is right now
+theme_score =  (distinct_commenters  × 10)        # consensus DOMINATES — this is the headline signal
+             + ln(1 + total_likes)                # silent agreement, LOG-DAMPED so one viral comment can't dominate
+             + (avg_severity          × 2)        # how badly it hurts the experience
+             + (avg_actionability     × 2)        # how fixable it is right now
 ```
 
-Use `CAP = 1000` for the likes term so a single viral comment doesn't drown out broad consensus.
+**Why these weights (apply them consistently):**
+
+- **Distinct commenters are weighted ×10** — they MUST dominate. The whole product thesis is "many voices → one ranked line": 11 different people raising the audio is the headline, and it must outrank one lonely severe complaint. ×10 makes each additional distinct person worth ~10 points.
+- **Likes use `ln(1 + total_likes)` (natural-log / `log1p`), NOT a linear term.** This is the fix for the old bug where likes swamped commenter count: a single +1000-like comment used to add ~500 points and bury dozens of distinct voices. Log-damped, +1000 likes adds only `ln(1001) ≈ 6.9` points — roughly the weight of **less than one** extra distinct commenter. So likes nudge ties; they never override consensus. (10 likes ≈ 2.4 pts, 100 ≈ 4.6, 1000 ≈ 6.9, 10000 ≈ 9.2 — it grows brutally slowly on purpose.)
+- **Severity + actionability (×2 each)** tilt toward "worth fixing AND fixable now" without ever outweighing how many people actually said it.
+
+Sanity check the intent: a theme with **5 distinct commenters and 20 likes** (`50 + ~3.0 = ~53` before sev/action) should beat a theme with **1 commenter and 5000 likes** (`10 + ~8.5 = ~18.5`). Distinct-commenter count wins — exactly as the priority below states.
 
 Ranking priorities, in order of weight:
-1. **Distinct-commenter count dominates.** "11 different people said your audio is too quiet" is the headline insight and must outrank one severe-but-lonely complaint. This is the core collapse of the whole tool: **many voices → one ranked line.**
-2. **Likes** are a softer multiplier (silent agreement), capped per above.
+1. **Distinct-commenter count dominates** (the ×10 term). "11 different people said your audio is too quiet" is the headline insight and must outrank one severe-but-lonely complaint. This is the core collapse of the whole tool: **many voices → one ranked line.**
+2. **Likes** are a soft, log-damped nudge (silent agreement) — they break ties, never decide the ranking.
 3. **Severity + actionability** tilt toward "worth fixing AND fixable now."
 
 The collapse in one line, by example:

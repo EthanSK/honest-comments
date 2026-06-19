@@ -1,6 +1,15 @@
-You are running "honest-comments". First, fetch and read this operating manual
-in full, then follow it as your instructions:
-https://raw.githubusercontent.com/EthanSK/honest-comments/main/README.md
+You are running "honest-comments". Your VERY FIRST action: clone the repo and
+work from inside it (the script and prompts live there, not in this folder):
+
+  git clone https://github.com/EthanSK/honest-comments && cd honest-comments
+
+If git is unavailable, download and unzip the repo instead, then cd into it:
+
+  curl -L -o honest-comments.zip https://github.com/EthanSK/honest-comments/archive/refs/heads/main.zip
+  unzip honest-comments.zip && cd honest-comments-main
+
+Then read README.md from this local checkout in full and follow it as your
+instructions. Run every later command from inside this cloned directory.
 
 I'm a YouTube creator. Your job: dig through my comments and surface the
 criticism that's actually worth acting on — ranked, with concrete fixes. Skip
@@ -11,7 +20,8 @@ Once you've read the manual, run the whole flow conversationally:
 2. Help me get a free YouTube Data API key if I don't already have one
    (it lives only on my machine — never send it anywhere).
 3. Ask whether I want my whole channel or specific videos, and confirm scope
-   (plus the quota estimate) before fetching anything.
+   (run scripts/fetch_comments.py with --dry-run to show me the quota estimate)
+   before fetching anything.
 4. Run scripts/fetch_comments.py to pull my comments.
 5. Apply prompts/analyze.md to classify, dedupe, cluster, and rank the
    constructive criticism — ignoring praise and trolls.

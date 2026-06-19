@@ -665,18 +665,27 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; line-height
    Reveal-on-scroll motion
    Elements with .reveal start translated down + transparent; script.js
    adds .is-visible via IntersectionObserver to animate them in.
+
+   NO-JS SAFETY (P1-9): the hidden-pre-animation state (opacity:0) is scoped
+   under `.js`, a class a tiny inline <head> script adds to <html> BEFORE the
+   page renders. So:
+     - JS on  -> <html class="js"> -> .reveal starts hidden, animates in.
+     - JS off -> no `.js` class    -> .reveal stays fully visible (the rule
+                                      below never matches), so the whole page
+                                      is readable even if JS fails/disabled.
+   Without this scoping, a JS failure would leave the page mostly invisible.
    ================================================================= */
-.reveal {
+.js .reveal {
   opacity: 0;
   transform: translateY(22px);
   transition: opacity 0.7s var(--ease), transform 0.7s var(--ease);
 }
-.reveal.is-visible { opacity: 1; transform: none; }
+.js .reveal.is-visible { opacity: 1; transform: none; }
 
 /* Respect reduced-motion: show everything immediately, no transforms */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .reveal { opacity: 1 !important; transform: none !important; transition: none; }
+  .js .reveal { opacity: 1 !important; transform: none !important; transition: none; }
   .btn:hover, .step:hover, .feature:hover, .agent-card:hover { transform: none; }
 }
 

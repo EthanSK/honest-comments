@@ -23,6 +23,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!--
+    NO-JS SAFETY (P1-9): mark <html> as JS-capable BEFORE the stylesheet paints.
+    The .reveal hide rule in styles.css is scoped under `.js`, so if this line
+    never runs (JS disabled / blocked / errored), the page renders fully visible
+    instead of mostly blank. This must stay here, inline + early in <head>, so it
+    executes before first paint (no flash of hidden content).
+  -->
+  <script>document.documentElement.classList.add('js');</script>
   <title>honest-comments — your harshest fans, ranked</title>
   <meta
     name="description"
@@ -134,8 +143,12 @@
           <a class="btn btn--ghost" href="#output">See a sample report</a>
         </div>
 
+        <!-- P1-4: honest framing — don't claim "zero data leaves your machine"
+             (comment text goes to YOUR AI provider to classify; the key + fetch
+             requests go to Google's YouTube API). The true claim is that NONE of
+             it goes to *us* — honest-comments has no servers. -->
         <p class="hero__foot reveal">
-          Open source · MIT · BYO-agent · zero of your data leaves your machine
+          Open source · MIT · BYO-agent · nothing goes to us — no honest-comments servers
         </p>
       </div>
     </section>
@@ -230,11 +243,20 @@
                 you can follow the README.
               </p>
 
-              <!-- Mini checklist that mirrors the README walkthrough -->
+              <!-- Mini checklist that mirrors the README walkthrough.
+                   P1-5: lead with the env-var path (more private — keeps the key
+                   out of chat logs); paste-to-agent is the explicit secondary
+                   fallback. Same ordering as README Step 1. -->
               <ul class="ticklist">
                 <li>Create a project in the Google Cloud console</li>
                 <li>Enable <strong>YouTube Data API v3</strong></li>
-                <li>Create an API key &amp; paste it to your agent</li>
+                <li>
+                  Create an API key, then set it as the
+                  <code>YOUTUBE_API_KEY</code> environment variable or drop it in
+                  a <code>.env</code> file <em>(recommended — keeps it out of
+                  chat logs)</em>
+                </li>
+                <li>Or, if you prefer, just paste it to your agent — it's your key and stays on your machine</li>
               </ul>
 
               <a
@@ -275,9 +297,18 @@
                   The exact text inside <code> is what gets copied. Keep it in sync with
                   the repo's STARTER_PROMPT.md / site/starter.txt. Whitespace matters.
                 -->
-                <pre class="codeblock__pre"><code data-copy-source>You are running "honest-comments". First, fetch and read this operating manual
-in full, then follow it as your instructions:
-https://raw.githubusercontent.com/EthanSK/honest-comments/main/README.md
+                <pre class="codeblock__pre"><code data-copy-source>You are running "honest-comments". Your VERY FIRST action: clone the repo and
+work from inside it (the script and prompts live there, not in this folder):
+
+  git clone https://github.com/EthanSK/honest-comments &amp;&amp; cd honest-comments
+
+If git is unavailable, download and unzip the repo instead, then cd into it:
+
+  curl -L -o honest-comments.zip https://github.com/EthanSK/honest-comments/archive/refs/heads/main.zip
+  unzip honest-comments.zip &amp;&amp; cd honest-comments-main
+
+Then read README.md from this local checkout in full and follow it as your
+instructions. Run every later command from inside this cloned directory.
 
 I'm a YouTube creator. Your job: dig through my comments and surface the
 criticism that's actually worth acting on — ranked, with concrete fixes. Skip
@@ -288,7 +319,8 @@ Once you've read the manual, run the whole flow conversationally:
 2. Help me get a free YouTube Data API key if I don't already have one
    (it lives only on my machine — never send it anywhere).
 3. Ask whether I want my whole channel or specific videos, and confirm scope
-   (plus the quota estimate) before fetching anything.
+   (run scripts/fetch_comments.py with --dry-run to show me the quota estimate)
+   before fetching anything.
 4. Run scripts/fetch_comments.py to pull my comments.
 5. Apply prompts/analyze.md to classify, dedupe, cluster, and rank the
    constructive criticism — ignoring praise and trolls.
@@ -314,10 +346,12 @@ Be honest, not nice. Begin now by greeting me.</code></pre>
       <div class="container">
         <header class="section__head reveal">
           <p class="eyebrow">The model</p>
-          <h2 class="section__title">Why we can promise we see nothing</h2>
+          <h2 class="section__title">Why we can promise <em>we</em> see nothing</h2>
           <p class="section__lede">
-            There's no "we" in the data path. honest-comments is a GitHub repo and this
-            page — your own agent does all the work, locally.
+            There's no "we" in the data path — honest-comments is just a GitHub repo and
+            this page, with no servers. Your key talks to Google's YouTube API to fetch
+            comments, and your own AI (the Codex/Claude plan you already pay for) classifies
+            them — exactly like any prompt you send it. Nothing routes through us.
           </p>
         </header>
 

@@ -26,18 +26,31 @@ WHAT IT DOES:
     4. Writes out/comments_<channel-or-batch>_<timestamp>.json plus a
        run_meta.json with per-video counts, errors, and comments-disabled list.
 
-ROBUST ERROR HANDLING:
-    - 403 commentsDisabled  -> skip that video, note it, keep going.
-    - 403 quotaExceeded     -> stop cleanly, write partial data, exit code 2.
-    - 400 / 403 bad key     -> clear message, exit code 3.
-    - channel not found     -> clear message, exit code 4.
+ROBUST ERROR HANDLING (exit-code contract — keep in sync with README
+"Troubleshooting"):
+    - 0  success (or a --dry-run that printed an estimate without fetching).
+    - 1  bad usage (e.g. negative --max-videos / --per-video-cap).
+    - 2  403 quotaExceeded -> stop cleanly, write partial data.
+    - 3  400 / 403 bad/disabled/restricted key -> clear message. This fires on
+         BOTH the channel path (key probed during setup) AND the --videos path
+         (no setup probe runs there, so the key is first exercised inside the
+         per-video fetch loop — see the BadApiKey guard there).
+    - 4  channel not found / empty channel (no public uploads) / --videos had
+         no usable IDs.
+    - Per-video, NON-fatal (run continues, recorded in run_meta):
+        * 403 commentsDisabled  -> skip that video, note it.
+        * 404 videoNotFound     -> invalid/private/deleted explicit ID; skip it,
+                                   record in run_meta errors, keep going.
 
 QUOTA NOTE (for context — the script does NOT enforce a hard ledger here, it
 just keeps the calls cheap): commentThreads.list and playlistItems.list each
 cost 1 unit per call regardless of maxResults, so one call fetches up to 100
-comments for 1 unit. Default free quota is 10,000 units/day. search.list (only
-used as a last-resort vanity-name fallback) costs 100 units — we warn before
-using it.
+comments for 1 unit. Default free quota is 10,000 units/day. search.list is the
+EXPENSIVE call (it draws from its own, much smaller search bucket) and is used
+ONLY as a last-resort vanity-name fallback — we warn before using it. We avoid
+quoting an exact unit figure for search here because Google's published numbers
+shift; just treat it as "the one pricey call, used only when nothing else
+resolves the channel."
 
 USAGE EXAMPLES:
     # Whole channel by handle (newest 25 videos by default):
@@ -112,6 +125,19 @@ class CommentsDisabled(Exception):
     """Raised (and caught per-video) when a video has comments turned off."""
 
 
+class VideoUnavailable(Exception):
+    """Raised (and caught per-video) when an explicit video ID can't be read.
+
+    Covers the 404 `videoNotFound` case (private / deleted / unlisted / just
+    plain wrong ID) on the `--videos` path. WHY this is its own type: a single
+    bad explicit video ID must NOT abort the whole run — we record it in the
+    per-video errors list and move on to the next video. `api_get()` raises the
+    generic `ChannelNotFound` on a 404; the per-video loop translates that into
+    this exception so the bad-ID case stays local instead of bubbling out as a
+    fatal channel-resolution failure (see fetch loop in main()).
+    """
+
+
 # ---------------------------------------------------------------------------
 # API key resolution
 # ---------------------------------------------------------------------------
@@ -148,9 +174,28 @@ def resolve_api_key(cli_key):
                         line = line[len("export "):]
                     if line.startswith("YOUTUBE_API_KEY="):
                         val = line.split("=", 1)[1].strip()
-                        # Strip surrounding quotes if present.
-                        if len(val) >= 2 and val[0] in "\"'" and val[-1] == val[0]:
-                            val = val[1:-1]
+                        # Parse the value, tolerating optional surrounding quotes
+                        # AND a trailing ` #...` inline comment. The order matters
+                        # because a QUOTED value may legally contain a `#` that is
+                        # NOT a comment, e.g.  KEY="ab#cd" # real comment.
+                        if val and val[0] in "\"'":
+                            # Quoted: take everything up to the matching closing
+                            # quote; anything after it (incl. a trailing comment)
+                            # is discarded. This keeps a `#` INSIDE the quotes.
+                            quote = val[0]
+                            end = val.find(quote, 1)
+                            if end != -1:
+                                val = val[1:end]
+                            else:
+                                # No closing quote — treat the rest as the value
+                                # minus the opening quote (best-effort).
+                                val = val[1:]
+                        elif " #" in val:
+                            # Unquoted: strip a trailing ` #...` inline comment.
+                            # We require a SPACE before the `#` so a `#` that's
+                            # actually part of the key isn't chopped mid-value
+                            # (`KEY=abc#def` stays intact; `KEY=abc # note` -> abc).
+                            val = val.split(" #", 1)[0].strip()
                         if val:
                             return val
         except OSError:
@@ -310,11 +355,22 @@ def resolve_channel_uploads_playlist(channel_arg, api_key):
     data = api_get("channels", params, api_key)
     items = data.get("items", [])
 
-    # Legacy-username path frequently misses; fall back to a search.list lookup.
-    if not items and username:
-        print(f"  ! forUsername found nothing for {username!r}; "
-              f"falling back to search (costs 100 quota units).")
-        channel_id = _search_channel_id(username, api_key)
+    # Fallback when the direct resolver found nothing. TWO cases land here:
+    #   1. Legacy /user/Name vanity — forUsername frequently misses for modern
+    #      channels.
+    #   2. /c/Vanity legacy custom URLs AND bare names — these arrive as
+    #      `handle` (see _parse_channel_arg) and are tried via forHandle, but a
+    #      legacy custom-URL vanity name often DIFFERS from the channel's actual
+    #      @handle, so forHandle returns nothing. The README promises "channel
+    #      URL" works, so before giving up we resolve the name via search.list.
+    # Both fall through to the same search.list lookup (costs 100 quota units;
+    # used only as a last resort because of that cost).
+    if not items and (username or handle):
+        search_name = username or handle.lstrip("@")
+        print(f"  ! Direct lookup found nothing for {search_name!r}; "
+              f"falling back to search.list (the expensive call — drawing from "
+              f"the search quota bucket, used only as a last resort).")
+        channel_id = _search_channel_id(search_name, api_key)
         data = api_get("channels",
                        {"part": "contentDetails,snippet", "id": channel_id},
                        api_key)
@@ -391,10 +447,12 @@ def _parse_channel_arg(channel_arg):
 
 
 def _search_channel_id(query, api_key):
-    """Last-resort channel lookup via search.list. COSTS 100 QUOTA UNITS.
+    """Last-resort channel lookup via search.list. THE EXPENSIVE CALL.
 
     Only used when forUsername/forHandle return nothing for a legacy vanity
-    name. We warn the caller before spending the 100 units.
+    name or /c/ custom URL. search.list draws from its own (much smaller)
+    search quota bucket — treat it as the one pricey call and avoid it unless
+    nothing else resolves the channel. We warn the caller before spending it.
     """
     data = api_get("search",
                    {"part": "snippet", "type": "channel", "q": query,
@@ -404,6 +462,22 @@ def _search_channel_id(query, api_key):
     if not items:
         raise ChannelNotFound(f"Search found no channel for {query!r}.")
     return items[0]["snippet"]["channelId"]
+
+
+def get_uploads_total(uploads_playlist_id, api_key):
+    """Return the TOTAL number of videos in a channel's uploads playlist.
+
+    Used by --dry-run to estimate scope without paging every video ID. We do a
+    single playlistItems.list call (1 quota unit) with maxResults=1 and read
+    `pageInfo.totalResults` — that field reports the full playlist size even
+    though we only asked for one item. Returns 0 if the field is missing.
+    """
+    data = api_get("playlistItems",
+                   {"part": "contentDetails",
+                    "playlistId": uploads_playlist_id,
+                    "maxResults": 1},
+                   api_key)  # 1 quota unit
+    return data.get("pageInfo", {}).get("totalResults", 0)
 
 
 def list_uploads_video_ids(uploads_playlist_id, api_key, max_videos):
@@ -562,9 +636,19 @@ def fetch_video_comments(video_id, api_key, per_video_cap, include_replies):
         if page_token:
             params["pageToken"] = page_token
 
-        # This is the call that can raise CommentsDisabled / QuotaExceeded —
-        # both are intentionally allowed to propagate to the right handler.
-        data = api_get("commentThreads", params, api_key)  # 1 quota unit/page
+        # This is the call that can raise CommentsDisabled / QuotaExceeded /
+        # BadApiKey — all intentionally allowed to propagate to the right
+        # handler in the per-video loop. ONE exception we translate here: a 404
+        # videoNotFound surfaces from api_get() as ChannelNotFound (api_get is
+        # channel-agnostic — any 404 maps to that type). For an explicit/private/
+        # deleted video ID that's really "this video is unavailable", so we
+        # re-raise it as VideoUnavailable. WHY: the per-video loop must record a
+        # single bad video and continue; an uncaught ChannelNotFound here would
+        # traceback and abort ALL output for one bad ID (P0-3).
+        try:
+            data = api_get("commentThreads", params, api_key)  # 1 quota unit/page
+        except ChannelNotFound as e:
+            raise VideoUnavailable(str(e) or "video not found / not accessible")
 
         for thread in data.get("items", []):
             # The top-level comment lives at snippet.topLevelComment.snippet.
@@ -707,15 +791,40 @@ def build_arg_parser():
                    help="Max top-level comments to fetch per video "
                         "(default 500; 0 = no cap).")
     p.add_argument("--include-replies", action="store_true",
-                   help="Also capture inline reply chains (off by default — "
-                        "replies are mostly noise).")
+                   help="Also capture the inline reply preview returned by the "
+                        "same commentThreads call (off by default — replies are "
+                        "mostly noise; this is NOT full reply chains).")
     p.add_argument("--out-dir", default="out",
                    help="Directory to write JSON output into (default ./out).")
+    # --dry-run / --estimate: resolve the channel + count its uploads and print
+    # an estimated quota cost, then EXIT WITHOUT fetching any comments. This is
+    # what the agent runs first (README Step 2/3) to show the creator the scope
+    # + cost and get a yes before spending quota on the real fetch.
+    p.add_argument("--dry-run", "--estimate", action="store_true",
+                   dest="dry_run",
+                   help="Resolve the channel, count its uploads, print a video "
+                        "count + estimated API-unit cost, then exit WITHOUT "
+                        "fetching comments. Use this to confirm scope first.")
     return p
 
 
 def main(argv=None):
     args = build_arg_parser().parse_args(argv)
+
+    # --- Validate numeric flags (must be integers >= 0) --------------------
+    # argparse already enforces `type=int`, so the only bad values that reach
+    # here are NEGATIVE. A negative cap is meaningless (and `--max-videos -1`
+    # would silently behave like "no slicing" deep in list_uploads_video_ids),
+    # so we reject it loudly with exit code 1 (generic usage error) rather than
+    # let it produce surprising results.
+    if args.max_videos < 0:
+        print("ERROR: --max-videos must be 0 or a positive integer "
+              "(0 = all videos).", file=sys.stderr)
+        return 1
+    if args.per_video_cap < 0:
+        print("ERROR: --per-video-cap must be 0 or a positive integer "
+              "(0 = no cap).", file=sys.stderr)
+        return 1
 
     # --- Resolve the API key (clear failure if missing) --------------------
     try:
@@ -736,6 +845,19 @@ def main(argv=None):
                 print("ERROR: --videos contained no recognisable video IDs.",
                       file=sys.stderr)
                 return 4
+
+            # --- Dry-run on the --videos path -------------------------------
+            # No channel/playlist to read totals from here, so the "estimate" is
+            # just the count of explicit IDs. Each video costs ~1+ commentThreads
+            # units (1 per 100-comment page). Print + exit WITHOUT fetching.
+            if args.dry_run:
+                n = len(video_ids)
+                print(f"\nDRY RUN — {n} explicitly-listed video(s) to scan.")
+                print(f"  Estimated cost: ~{n}+ API units (>=1 commentThreads "
+                      f"unit per video; more for videos with >100 comments).")
+                print("  No comments fetched. Re-run without --dry-run to fetch.")
+                return 0
+
             for vid in video_ids:
                 video_meta[vid] = {"title": "", "published_at": ""}
             print(f"Scanning {len(video_ids)} explicitly-listed video(s).")
@@ -748,6 +870,28 @@ def main(argv=None):
             max_v = args.max_videos if args.max_videos else 0
             print(f"  Channel: {ch_title} ({ch_id})")
             print(f"  Uploads playlist: {uploads}")
+
+            # --- Dry-run on the --channel path ------------------------------
+            # Read the uploads playlist's TOTAL video count (1 quota unit) and
+            # print a scope + cost estimate, then EXIT before fetching any
+            # comments. This is what the agent runs first (README Step 2/3) to
+            # show the creator the size + cost and get a yes.
+            if args.dry_run:
+                total = get_uploads_total(uploads, api_key)
+                scanned = total if max_v == 0 else min(total, max_v)
+                scope_desc = (f"newest {max_v}" if max_v else "ALL")
+                print(f"\nDRY RUN — {ch_title} has {total} public upload(s).")
+                print(f"  Scope: {scope_desc} -> would scan {scanned} video(s).")
+                # Rough estimate: ~1 playlistItems unit per 50 videos paged +
+                # >=1 commentThreads unit per video. We keep this deliberately
+                # approximate (don't over-claim exact unit math).
+                est = (scanned // PLAYLIST_ITEMS_PER_PAGE + 1) + scanned
+                print(f"  Estimated cost: ~{est}+ of your 10,000 daily API units "
+                      f"(>=1 commentThreads unit per video; more for videos with "
+                      f">100 comments).")
+                print("  No comments fetched. Re-run without --dry-run to fetch.")
+                return 0
+
             scope_desc = (f"newest {max_v}" if max_v else "ALL")
             print(f"  Fetching {scope_desc} video IDs ...")
             vids = list_uploads_video_ids(uploads, api_key, max_v)
@@ -756,6 +900,19 @@ def main(argv=None):
                 video_meta[v["video_id"]] = {
                     "title": v["title"], "published_at": v["published_at"]}
             print(f"  Got {len(video_ids)} video(s).")
+
+            # --- Empty-channel guard (P1-2) ---------------------------------
+            # A brand-new / private / no-public-upload channel resolves fine but
+            # yields zero video IDs. Without this guard we'd write empty JSON and
+            # exit 0 with no explanation. Tell the creator there's nothing to
+            # analyze and exit 4 (same family as "channel not found / no usable
+            # source") so the README troubleshooting can name it.
+            if not video_ids:
+                print(f"ERROR: {ch_title!r} resolved, but it has no public "
+                      f"uploads to analyze (empty channel, or all videos are "
+                      f"private/unlisted). Nothing to fetch.", file=sys.stderr)
+                return 4
+
             # Pre-flight quota sense-check (rough: ~1-5 calls/video typical).
             if max_v == 0 and len(video_ids) > 200:
                 print(f"  ! NOTE: {len(video_ids)} videos is a lot — this can "
@@ -799,6 +956,32 @@ def main(argv=None):
             # One video having comments off must NOT kill the whole run.
             comments_disabled.append(vid)
             print("    -> comments disabled; skipping.")
+
+        except VideoUnavailable as e:
+            # P0-3: an invalid / private / deleted explicit video ID returns
+            # 404 videoNotFound. That's a per-video problem, NOT a fatal one —
+            # record it in run_meta's errors list and CONTINUE to the next
+            # video. Without this, one bad ID on the --videos path would
+            # traceback and abort all output for the whole batch.
+            errors.append((vid, f"video unavailable: {e}"))
+            print(f"    -> video unavailable (skipping): {e}", file=sys.stderr)
+
+        except BadApiKey as e:
+            # P0-2: the --videos path does NOT run the channel-setup key probe
+            # (that only happens in resolve_channel_uploads_playlist), so a
+            # bad/disabled/referrer-restricted key first surfaces HERE, on the
+            # very first commentThreads call. A bad key won't fix itself by
+            # skipping to the next video — every call will fail the same way —
+            # so this is FATAL: stop cleanly and exit 3 pointing at README Step
+            # 1. We return directly (no partial output worth writing on a key
+            # failure — nothing was fetched).
+            print(f"ERROR: API key problem: {e}\n"
+                  f"  The key looks invalid / disabled / restricted. See README "
+                  f"Step 1: enable the YouTube Data API v3 for the key's project, "
+                  f"check the key is correct, and remove any HTTP-referrer "
+                  f"restriction (this is a server-side call, not a browser call).",
+                  file=sys.stderr)
+            return 3
 
         except QuotaExceeded as e:
             # Stop cleanly and write whatever we already have (partial data).

@@ -12,7 +12,9 @@
 
 **Your harshest fans, ranked.** honest-comments finds the genuinely useful criticism buried in your YouTube comments — no praise, no trolls — and tells you what to actually fix.
 
-It runs entirely on *your* machine and *your* AI. You paste a tiny prompt into Codex CLI or Claude Code, that agent fetches this manual, pulls your comments with your own free YouTube API key, and uses your own AI subscription to do the analysis. **We host nothing and we see nothing** — there is no backend, no account, no data sent anywhere.
+It runs entirely on *your* machine and *your* AI. You paste a tiny prompt into Codex CLI or Claude Code, that agent fetches this manual, pulls your comments with your own free YouTube API key, and uses your own AI subscription to do the analysis.
+
+**honest-comments has no servers and receives nothing from you** — there's no backend, no account, no honest-comments-hosted anything. To be precise about where your data *does* go (because "nothing leaves your machine" wouldn't be true): your **API key and comment requests go to Google's YouTube API** (that's how the comments get fetched), and the **comment text is processed by your own AI provider** — the Codex/Claude subscription you already use — to classify it, exactly like any other prompt you send them. Nothing goes to *us*. There's no third party in the middle that we run.
 
 What you get back: a ranked digest like _"Audio is too quiet — 11 different people said this (+340 likes). Fix: raise your voice gain, add a compressor, aim for ~-14 LUFS."_ The praise gets counted but skipped. The trolls get filtered out. You're left with the stuff that's harsh but worth acting on.
 
@@ -26,11 +28,14 @@ Read the rest of this file, then execute "Your procedure" below.
 
 ### Privacy contract — say this to the creator early
 
-State plainly, near the start:
+State plainly, near the start — and be **honest**, not over-promising. The truthful framing:
 
-- Their API key lives **only on their machine** and is never sent to honest-comments or anyone else.
-- No comment data leaves their computer except the parts you feed to *your own* model (their AI subscription) to classify.
+- **honest-comments (this project) has no servers and receives nothing.** There's no backend, no account, nothing of ours in the data path.
+- Their **API key never goes to honest-comments**. It's used locally by the script to call **Google's YouTube API** — that's the one place the key (and the comment-fetch requests) go, because that's how comments are retrieved.
+- **Comment text is processed by *their own* AI provider** (the Codex/Claude subscription they already pay for) to classify it — the same as any prompt they send their model. So comment text does leave the machine *to their own model provider*, exactly as it would for any other use of their agent. It never goes to us.
 - Everything the script fetches lands in a local `out/` folder they own and can re-use or delete.
+
+Don't say "nothing is ever sent anywhere" — that's not true and creators will (rightly) distrust it. Say: *nothing goes to honest-comments; your key talks to Google's YouTube API; your comments are classified by your own AI, same as any prompt.*
 
 ### Prerequisites
 
@@ -41,6 +46,23 @@ State plainly, near the start:
 ---
 
 ## Your procedure
+
+### Step 0 — Get the code (clone the repo FIRST)
+
+**This is your very first action, before anything else.** The fetch script (`scripts/fetch_comments.py`) and the analyzer (`prompts/analyze.md`) live in this repo — they are NOT in the creator's empty workspace yet. If you skip straight to "run scripts/fetch_comments.py" you'll hit *No such file or directory* and the whole flow fails. So clone the repo and work from inside it:
+
+```
+git clone https://github.com/EthanSK/honest-comments && cd honest-comments
+```
+
+If `git` isn't available, download and unzip the repo instead, then `cd` into it:
+
+```
+curl -L -o honest-comments.zip https://github.com/EthanSK/honest-comments/archive/refs/heads/main.zip
+unzip honest-comments.zip && cd honest-comments-main
+```
+
+From here on, **every command runs from inside this cloned directory** — `python3 scripts/fetch_comments.py ...` and "load `prompts/analyze.md`" both assume that's your working directory. The `out/` folder the script writes to will be created here too.
 
 ### Step 1 — Get a free YouTube Data API key
 
@@ -72,15 +94,23 @@ Ask the creator: **whole channel, or specific videos?** A creator usually thinks
 - **Specific videos (preferred when they have a target):** they paste any mix of full URLs, short `youtu.be` links, `/shorts/` links, or bare 11-char IDs. This skips channel resolution entirely — cheaper, faster, more targeted.
 - **Whole channel:** they give a handle (`@SomeCreator`), a channel URL, or a `UC...` channel ID. You'll resolve this to their uploads playlist and page through it.
 
-**Default scope guard:** the newest **25** videos. Do NOT pull a giant back-catalogue on a first run — it's a quota bomb and rarely what they want. Once you know the channel size, **confirm scope and show a quota estimate before fetching a single comment.** Example:
+**Default scope guard:** the newest **25** videos. Do NOT pull a giant back-catalogue on a first run — it's a quota bomb and rarely what they want.
 
-> "Found 312 videos on @YourChannel. I'll start with your newest 25 (~280 of your 10,000 daily API units). Want the newest 25, a different number, or specific videos instead?"
+**To get the real numbers, run the fetcher in `--dry-run` mode first.** This resolves the channel, counts its uploads, and prints a video count + estimated API-unit cost — **without fetching a single comment**:
 
-Wait for a yes before going wide.
+```
+python3 scripts/fetch_comments.py --channel "@SomeCreator" --dry-run
+```
+
+(`--dry-run` works on the `--videos` path too — it just reports how many explicit videos you'd scan.) Take the count + estimate it prints, show it to the creator in plain English, and **wait for a yes before the real fetch.** Example:
+
+> "Found 312 videos on @YourChannel. The default scope is your newest 25 (~26 of your 10,000 daily API units). Want the newest 25, a different number, or specific videos instead?"
+
+Only after they confirm do you run the same command **without** `--dry-run` (Step 3). Wait for a yes before going wide.
 
 ### Step 3 — Run the fetcher
 
-Run `scripts/fetch_comments.py` with Python 3. Key invocations:
+**Confirm scope with `--dry-run` first (Step 2), then run the real fetch** by re-running the same command without `--dry-run`. Run `scripts/fetch_comments.py` with Python 3. Key invocations:
 
 **Specific videos:**
 ```
@@ -98,7 +128,8 @@ python3 scripts/fetch_comments.py --channel "@SomeCreator"
 - `--videos "<url/id, url/id, ...>"` — fetch specific videos directly (URLs, short links, `/shorts/`, or bare IDs, mixed).
 - `--max-videos N` — how many newest videos to pull for a channel (default **25**).
 - `--per-video-cap N` — max top-level comments per video (default **500**). Comments come back `order=relevance`, so the signal is front-loaded and the deep tail is mostly emoji.
-- `--include-replies` — also fetch reply chains (off by default — replies are mostly creator-replies and noise, and cost extra quota).
+- `--include-replies` — also include the **inline reply preview** that the same `commentThreads` call already returns (off by default — replies are mostly creator-replies and noise). This is **not** full reply chains and costs **no meaningful extra quota** — it just keeps the handful of replies YouTube bundles into each thread.
+- `--dry-run` (a.k.a. `--estimate`) — resolve the channel, count its uploads, print a video count + estimated API-unit cost, then exit **without fetching any comments**. Run this first (Step 2) to confirm scope with the creator.
 - `--api-key <key>` — override the env-var/`.env` key resolution.
 
 **Quota guardrails (you, the agent, enforce the confirmation — the script keeps the calls cheap):**
@@ -109,7 +140,7 @@ python3 scripts/fetch_comments.py --channel "@SomeCreator"
 - Google resets quota at **midnight US Pacific**; on a `quotaExceeded` (HTTP 403) the script writes whatever it already fetched and exits **2**.
 - Stream light progress to the creator from the script's own per-video output, e.g. _"Pulled 4,210 comments across 25 videos. 2 videos had comments disabled."_
 
-**Output:** the script writes `out/comments_<channel-or-batch>_<timestamp>.json` (the stripped comment objects) and `out/run_meta.json` (videos requested, comments per video, total comment counts, comments-disabled list, per-video errors, and a `quota_exceeded` flag). Raw JSON on disk means you can re-analyze without re-spending quota.
+**Output:** the script writes `out/comments_<channel-or-batch>_<timestamp>.json` (the stripped comment objects) and `out/run_meta.json` (videos requested, comments per video, total comment counts, comments-disabled list, per-video errors, and a `quota_exceeded` flag). The analyzer (Step 4) writes more files into the same `out/` folder (`classified_*.json`, `claims.json`, `themes.json`). The **entire `out/` directory is gitignored** — it's the creator's local data and never gets committed. Raw JSON on disk means you can re-analyze without re-spending quota.
 
 ### Step 4 — Analyze (classify → dedupe → cluster → rank)
 
@@ -161,10 +192,13 @@ Then **offer to go deeper**:
 
 ## Troubleshooting
 
-- **No API key / "API key not valid":** the script exits with code **3**. Re-check Step 1 — most often the key is correct but the **YouTube Data API v3 wasn't enabled** for the project (Step 1.3), or an HTTP-referrer restriction was added by mistake (remove it). Tell the creator the exact thing to fix.
+- **Bad usage (negative flag value):** if `--max-videos` or `--per-video-cap` is given a negative number, the script exits **1** with a clear message. Use `0` for "all videos" / "no cap"; any positive integer otherwise.
+- **No API key / "API key not valid":** the script exits with code **3**. Re-check Step 1 — most often the key is correct but the **YouTube Data API v3 wasn't enabled** for the project (Step 1.3), or an HTTP-referrer restriction was added by mistake (remove it). Note: on the `--videos` path there's no channel-setup probe, so a bad key first shows up on the very first comment fetch — same exit **3**, same fix. Tell the creator the exact thing to fix.
 - **`quotaExceeded` (HTTP 403):** the script exits **2** after writing whatever it already fetched. Tell the creator how much got pulled and that **quota resets at midnight US Pacific** — re-run then, or scope smaller (fewer videos, lower `--per-video-cap`). Their partial data in `out/` is still analyzable now.
 - **Comments disabled on a video (HTTP 403 `commentsDisabled`):** not an error — the script skips that video, notes it in `run_meta.json`, and continues. Mention which videos had comments off, then move on.
+- **A specific video is invalid / private / deleted (HTTP 404 `videoNotFound`):** not fatal — the script records that one video in `run_meta.json`'s `errors` list and continues to the rest. One bad video link won't abort the whole run. Mention which IDs were unavailable.
 - **Channel not found / handle didn't resolve, or `--videos` had no usable links:** the script exits **4** (it uses the same code when a channel can't be resolved and when `--videos` contained no recognisable video IDs). Ask the creator to paste their channel URL directly, or their `UC...` channel ID, or just specific video links instead (the `--videos` path skips channel resolution entirely).
+- **Empty channel (no public uploads):** if a channel resolves but has zero public videos (brand-new, or everything private/unlisted), the script prints a "nothing to analyze" message and exits **4**. There's genuinely nothing to fetch — suggest specific video links, or check the channel actually has public uploads.
 - **Private/unlisted videos:** an API key can only read **public** videos' comments. If a video link doesn't return comments, confirm it's public.
 - **Everything came back as praise/trolls, nothing constructive:** that can be real (small or very positive comment set). Say so honestly rather than manufacturing criticism — and offer to widen scope to more videos.
 

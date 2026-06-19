@@ -2,5 +2,11 @@ node_modules/
 __pycache__/
 *.pyc
 .env
+# Ignore the WHOLE out/ dir — it holds the creator's fetched comments plus every
+# intermediate file the analyzer writes (run_meta.json, classified_*.json,
+# claims.json, themes.json). The old `comments_*.json` pattern only caught the
+# raw dump and would have let run_meta / classified / claims / themes get
+# committed by accident. /out/ is the creator's local data — never commit it.
+/out/
 comments_*.json
 .DS_Store

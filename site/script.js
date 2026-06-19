@@ -75,8 +75,15 @@
       ta.style.left = "-9999px";
       document.body.appendChild(ta);
       ta.select();
-      document.execCommand("copy");
+      // P2-5: capture execCommand's boolean return. It returns false when the
+      // copy was NOT performed (unsupported / blocked context). If we ignore it
+      // we'd flash "Copied!" on a failure; instead we throw so the caller's
+      // outer catch surfaces the "Press ⌘C" manual-copy hint.
+      var ok = document.execCommand("copy");
       document.body.removeChild(ta);
+      if (!ok) {
+        throw new Error("execCommand('copy') returned false");
+      }
     }
   }
 
