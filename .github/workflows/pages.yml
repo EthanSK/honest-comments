@@ -1,0 +1,54 @@
+# =============================================================================
+# GitHub Pages deploy — publishes the static landing page in site/ to Pages.
+# =============================================================================
+# WHY a workflow instead of the simple "deploy from a /docs folder" setting:
+# GitHub's folder-source option only accepts "/" or "/docs". Our page lives in
+# site/ (kept separate from the README/script/prompt that the agent actually
+# uses), so we upload site/ as the Pages artifact via the official actions.
+# This is the modern "GitHub Actions" Pages source — set once in repo settings
+# (build_type=workflow) and every push to main re-publishes site/ automatically.
+# =============================================================================
+
+name: Deploy site to GitHub Pages
+
+on:
+  # Re-deploy on every push to main that could touch the page.
+  push:
+    branches: [main]
+  # Allow a manual re-run from the Actions tab.
+  workflow_dispatch:
+
+# Pages deploys need these permissions on the GITHUB_TOKEN.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deploy at a time; let an in-progress run finish (don't cancel
+# a live deploy mid-flight).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site/ as the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Only the static landing page is published — not the script/prompts.
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
