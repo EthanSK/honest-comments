@@ -24,6 +24,16 @@ Each entry looks like:
 (newest first)
 
 ---
+**Date:** 2026-06-20T01:02:47Z
+**Trigger:** Mini end-to-end test for channel reethen, 2026-06-20
+**Symptom:** honest-comments OAuth fetch fails: commentThreads.list returns 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT even though login + channels.list?mine=true succeed
+**Root cause:** The youtube.readonly OAuth scope is permitted for channels.list?mine=true but Google REFUSES it for commentThreads.list. youtube.force-ssl is the ONLY OAuth scope that can read comments via the API — a documented Google quirk.
+**Fix:** Set OAUTH_SCOPE to https://www.googleapis.com/auth/youtube.force-ssl in scripts/youtube_login.py. The tool stays genuinely read-only (only .list calls); the consent screen's scary 'edit/delete' wording is Google's boilerplate for that scope. Transparency note added to README + code comments.
+**Commit:** 3bdc61c
+**Guard:** README callout + code comment explaining force-ssl-but-read-only with a grep-to-verify; verified zero write/insert/update/delete API calls exist
+---
+
+---
 **Date:** 2026-06-19T23:40:39Z
 **Trigger:** owner decision to switch manual-API-key -> agent-driven OAuth login
 **Symptom:** Manual YouTube API-key onboarding too heavy; needed agent-driven login + 'my channel' auto-detect
