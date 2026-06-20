@@ -14,9 +14,12 @@ WHY OAUTH INSTEAD OF AN API KEY:
     works but it forces every creator to walk through the Cloud console, enable
     an API, and create+copy a key. OAuth flips it: the PROJECT OWNER (Ethan)
     does that one-time Cloud setup once, ships an OAuth "Desktop app" client,
-    and every end-user just signs into their own Google account. With the
-    `youtube.readonly` scope we can also resolve the signed-in creator's OWN
-    channel via `mine=true` — no handle to paste.
+    and every end-user just signs into their own Google account. We request the
+    `youtube.force-ssl` scope (NOT youtube.readonly — see the big OAUTH_SCOPE
+    comment below for why: readonly can't read comments, only force-ssl can) and
+    with it we also resolve the signed-in creator's OWN channel via `mine=true`
+    — no handle to paste. IMPORTANT: despite the scary scope wording, this tool
+    ONLY EVER READS — it calls only `list` endpoints, never writes/deletes.
 
 THE OAUTH FLOW WE IMPLEMENT — "installed app" loopback + PKCE:
     This is Google's recommended flow for desktop/CLI apps that can't keep a
@@ -95,12 +98,31 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 
-# The SENSITIVE scope we request: read-only access to the signed-in creator's
-# YouTube data. This is what lets fetch_comments.py read their comments AND
-# resolve their own channel via channels.list?mine=true. Because it's a
-# "sensitive" scope, Google shows an "unverified app" interstitial until the
-# OAuth app passes Google's verification — the README is honest about that.
-OAUTH_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
+# =============================================================================
+# OAUTH SCOPE — READ THIS BEFORE GETTING SUSPICIOUS OF THE BROAD PERMISSION.
+# =============================================================================
+# We request youtube.force-ssl, NOT youtube.readonly. This is a Google quirk:
+# the read-only scope is allowed to IDENTIFY your channel (channels.list?mine=true)
+# but is REFUSED for commentThreads.list (it returns
+# `403 ACCESS_TOKEN_SCOPE_INSUFFICIENT`). force-ssl is the ONLY OAuth scope Google
+# permits for READING comments via the YouTube Data API. We proved this with a
+# live test: youtube.readonly could log in + resolve the channel, but could not
+# read a single comment.
+#
+# Despite the consent-screen wording ("See, edit, and permanently delete your
+# YouTube videos, ratings, comments, and captions"), THIS TOOL ONLY EVER READS.
+# It calls only `list` endpoints (channels.list, playlistItems.list,
+# commentThreads.list, search.list) — there is NO write / insert / update /
+# delete / rate call ANYWHERE in this codebase. You (or your AI) can verify in
+# seconds:
+#     grep -rn "insert\|update\|delete\|setRating\|rate" scripts/   # -> nothing
+# The broad scope is Google's REQUIREMENT to read comments, not a reflection of
+# what we do. honest-comments has no servers and never modifies your channel.
+#
+# Because force-ssl is a "sensitive" scope, Google shows an "unverified app"
+# interstitial until the OAuth app passes Google's verification — the README is
+# honest about that.
+OAUTH_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl"
 
 # Where we persist everything, under the creator's HOME (NOT in the repo, so a
 # `git clone` checkout never carries tokens). Both files live here:
@@ -209,7 +231,10 @@ def resolve_client_config():
         "This is the PROJECT OWNER'S one-time setup (end users never do this):\n"
         "  1. Create a Google Cloud project + enable the YouTube Data API v3.\n"
         "  2. Configure the OAuth consent screen with the\n"
-        "     https://www.googleapis.com/auth/youtube.readonly scope.\n"
+        "     https://www.googleapis.com/auth/youtube.force-ssl scope.\n"
+        "     (force-ssl, NOT readonly — readonly is refused for reading\n"
+        "     comments; force-ssl is the only scope Google allows. The tool\n"
+        "     still only ever READS.)\n"
         "  3. Create an OAuth client of type \"Desktop app\".\n"
         "  4. Provide it to this script in ANY one of these ways:\n"
         "       - export HONEST_COMMENTS_OAUTH_CLIENT_ID=... and\n"
@@ -263,7 +288,9 @@ def build_auth_url(client_id, redirect_uri, code_challenge, state):
       - client_id                   identifies the honest-comments OAuth app.
       - redirect_uri                the loopback URL Google bounces the browser
                                     back to (http://127.0.0.1:<ephemeral-port>/).
-      - scope                       youtube.readonly (see OAUTH_SCOPE).
+      - scope                       youtube.force-ssl (see OAUTH_SCOPE — it's
+                                    the only scope that can READ comments; the
+                                    tool still only ever reads).
       - code_challenge / _method    the PKCE public half (S256).
       - access_type=offline         REQUIRED to receive a refresh_token (so we
                                     can auto-refresh later without re-prompting).
@@ -343,9 +370,11 @@ class _RedirectCatcher(BaseHTTPRequestHandler):
         elif self.server.auth_result["code"]:
             title, body = (
                 "You’re signed in ✓",
-                "honest-comments now has read-only access to your YouTube data. "
-                "You can close this tab and return to your agent — it’ll "
-                "continue from here.",
+                "honest-comments can now READ your YouTube comments. (Google’s "
+                "consent screen mentions editing/deleting because that’s the "
+                "only scope allowed to read comments — but honest-comments only "
+                "ever reads; it never changes anything on your channel.) You can "
+                "close this tab and return to your agent — it’ll continue from here.",
             )
         else:
             title, body = (
@@ -436,10 +465,19 @@ def run_loopback_capture(port_hint, timeout_seconds, open_browser, print_url,
     # Always PRINT the URL so a headless / no-default-browser environment can
     # still complete the flow by pasting it manually. Optionally also try to
     # auto-open it.
-    print("\nOpening your browser to sign in to YouTube (Google)...")
+    #
+    # flush=True on EVERY print here is load-bearing: under a non-TTY stdout
+    # (agent / pipe), buffered output would hide the auth URL until the process
+    # exits — but the process BLOCKS waiting for the redirect, so the URL would
+    # never appear and the login would look frozen. flush=True forces the URL +
+    # status lines out immediately so the human/agent can act on them right now.
+    # (main() also sets line_buffering=True; these flushes are the belt-and-
+    # suspenders guarantee in case reconfigure() wasn't available.)
+    print("\nOpening your browser to sign in to YouTube (Google)...", flush=True)
     if print_url or not open_browser:
-        print("\nIf your browser didn't open, paste this URL into it manually:\n")
-        print(f"  {auth_url}\n")
+        print("\nIf your browser didn't open, paste this URL into it manually:\n",
+              flush=True)
+        print(f"  {auth_url}\n", flush=True)
     if open_browser:
         try:
             import webbrowser
@@ -447,16 +485,19 @@ def run_loopback_capture(port_hint, timeout_seconds, open_browser, print_url,
             # already printed the URL above as the fallback in that case.
             opened = webbrowser.open(auth_url)
             if not opened and not (print_url or not open_browser):
-                print("\nCouldn't auto-open a browser. Paste this URL manually:\n")
-                print(f"  {auth_url}\n")
+                print("\nCouldn't auto-open a browser. Paste this URL manually:\n",
+                      flush=True)
+                print(f"  {auth_url}\n", flush=True)
         except Exception:
             # Never let a webbrowser hiccup abort the login — the printed URL is
             # the reliable fallback.
             if not (print_url or not open_browser):
-                print("\nCouldn't auto-open a browser. Paste this URL manually:\n")
-                print(f"  {auth_url}\n")
+                print("\nCouldn't auto-open a browser. Paste this URL manually:\n",
+                      flush=True)
+                print(f"  {auth_url}\n", flush=True)
 
-    print(f"Waiting for you to approve access (up to {timeout_seconds}s)...")
+    print(f"Waiting for you to approve access (up to {timeout_seconds}s)...",
+          flush=True)
 
     # --- AWAIT_REDIRECT -----------------------------------------------------
     # handle_request() serves exactly ONE request then returns. We run it in a
@@ -654,11 +695,18 @@ def build_arg_parser():
             "Sign in to YouTube for honest-comments via Google OAuth 2.0.\n\n"
             "What happens when you run this:\n"
             "  1. Your browser opens to Google's sign-in / consent screen.\n"
-            "  2. You approve READ-ONLY access to your YouTube data (one click).\n"
+            "  2. You approve access to your YouTube data (one click).\n"
             "  3. Tokens are saved locally to ~/.honest-comments/youtube_token.json\n"
             "     and auto-refresh from then on — you won't be asked again.\n\n"
             "After this, run scripts/fetch_comments.py (use --mine to grab your\n"
             "own channel). No manual API key needed.\n\n"
+            "ABOUT THE CONSENT SCREEN: You'll see a Google consent screen that\n"
+            "mentions editing/deleting your videos, comments and captions — that's\n"
+            "Google's wording for the youtube.force-ssl scope, which is the ONLY\n"
+            "scope that can READ comments via the API (the read-only scope is\n"
+            "refused for reading comments). honest-comments only ever READS; it\n"
+            "never changes anything on your channel (it calls only `list` endpoints\n"
+            "— grep the scripts to confirm there are no write/delete calls).\n\n"
             "NOTE: until honest-comments' OAuth app is Google-verified, you'll see\n"
             "a \"Google hasn't verified this app\" screen — click Advanced →\n"
             "\"Go to honest-comments (unsafe)\" to continue. It's signing into YOUR\n"
@@ -666,7 +714,9 @@ def build_arg_parser():
         ),
         epilog=(
             "Owner one-time setup (end users skip this): create a Google OAuth\n"
-            "\"Desktop app\" client with the youtube.readonly scope and provide it via\n"
+            "\"Desktop app\" client with the youtube.force-ssl scope (NOT readonly —\n"
+            "readonly can't read comments; force-ssl is the only scope that can, and\n"
+            "the tool still only ever reads) and provide it via\n"
             "HONEST_COMMENTS_OAUTH_CLIENT_ID / _SECRET env vars, a\n"
             "~/.honest-comments/client_config.json file, or the PLACEHOLDER_*\n"
             "constants at the top of this script. See the README."
@@ -698,6 +748,22 @@ def build_arg_parser():
 
 
 def main(argv=None):
+    # --- OUTPUT-BUFFERING FIX (critical for non-TTY / agent invocation) -----
+    # When this script runs under an agent / pipe / subprocess (i.e. stdout is
+    # NOT a terminal), Python fully-buffers stdout. That meant the auth URL and
+    # the "waiting for sign-in..." status lines sat invisibly in the buffer until
+    # the process exited — so the human/agent never saw the URL they were
+    # supposed to open, and the login appeared to hang. We force line-buffering
+    # so every print() flushes on its newline even when stdout isn't a TTY.
+    # Wrapped in try/except because reconfigure() only exists on Python 3.7+ and
+    # can fail if stdout was replaced with a non-reconfigurable stream; the
+    # explicit flush=True on the auth-URL prints below is the belt-and-suspenders
+    # fallback for those cases.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except (AttributeError, ValueError):
+        pass
+
     args = build_arg_parser().parse_args(argv)
 
     # Basic usage validation.

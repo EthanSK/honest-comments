@@ -14,6 +14,17 @@ AUTH MODEL — OAUTH FIRST, API KEY AS FALLBACK (changed 2026-06-20):
     OAuth unlocks `channels.list?mine=true` — resolving the SIGNED-IN creator's
     own channel with no handle to paste (the --mine flag).
 
+    SCOPE NOTE (youtube.force-ssl, NOT youtube.readonly): the token comes from
+    youtube_login.py with the youtube.force-ssl scope. That broad-sounding scope
+    is a Google REQUIREMENT to read comments — youtube.readonly is refused for
+    commentThreads.list (403 ACCESS_TOKEN_SCOPE_INSUFFICIENT), so force-ssl is
+    the only OAuth scope that can read comments. Even so, THIS SCRIPT ONLY EVER
+    READS: every call below is a `list` endpoint (channels.list, playlistItems
+    .list, commentThreads.list, search.list). There is NO write / insert / update
+    / delete / setRating call anywhere here. The fetch logic itself didn't change
+    when we switched scopes — it just needed the broader scope to be granted at
+    login time.
+
     If there's NO OAuth token but an API KEY is available (--api-key /
     $YOUTUBE_API_KEY / ./.env), we fall back to the old public-data-only key path
     (so the tool still works for anyone who prefers a key and hasn't logged in).
@@ -972,6 +983,11 @@ def fetch_video_comments(video_id, auth, per_video_cap, include_replies):
         }
         if page_token:
             params["pageToken"] = page_token
+
+        # READ-ONLY AFFIRMATION: this is commentThreads.LIST — a pure read. Even
+        # though the OAuth token carries the broad youtube.force-ssl scope (the
+        # only scope Google lets read comments), we never call any write/insert/
+        # update/delete endpoint. This GET only fetches existing comments.
 
         # This is the call that can raise CommentsDisabled / QuotaExceeded /
         # BadApiKey — all intentionally allowed to propagate to the right

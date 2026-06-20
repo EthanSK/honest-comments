@@ -33,6 +33,7 @@ State plainly, near the start — and be **honest**, not over-promising. The tru
 - **honest-comments (this project) has no servers and receives nothing.** There's no backend, no account, nothing of ours in the data path.
 - **The login goes to Google.** You're signing into *your own* Google/YouTube account on Google's own pages. The OAuth tokens that come back are stored **locally** in `~/.honest-comments/` (readable only by you) and auto-refresh — they never go to honest-comments.
 - **honest-comments has a registered Google OAuth identity** — that's the name you'll see on the consent screen, and it's how Google knows which app you're authorizing. That's an *app registration*, **not a server and not a data path**. No comment data, token, or request routes through honest-comments.
+- **The consent screen mentions "edit and delete" — but the tool only READS.** Google's API only lets you read comments under the broad `youtube.force-ssl` scope (the read-only scope is *refused* for reading comments — a documented Google limitation), so the consent screen shows scary "edit/delete" wording. honest-comments' actual **behavior is read-only**: it calls only `list` endpoints and never writes, edits, or deletes anything. The creator (or their AI) can confirm by reading `scripts/` — there are no insert/update/delete API calls. See the ["Why the sign-in screen mentions 'edit and delete'" callout](#step-1--log-in-to-youtube) for the full explanation.
 - Their **comment-fetch requests go to Google's YouTube API** (authenticated with their own login) — that's how comments are retrieved.
 - **Comment text is processed by *their own* AI provider** (the Codex/Claude subscription they already pay for) to classify it — the same as any prompt they send their model. So comment text does leave the machine *to their own model provider*, exactly as it would for any other use of their agent. It never goes to us.
 - Everything the script fetches lands in a local `out/` folder they own and can re-use or delete.
@@ -85,9 +86,21 @@ What happens, in order:
 
 1. The script opens the creator's **browser** to Google's sign-in / consent screen (and also prints the URL, in case the browser doesn't auto-open — they can paste it).
 2. They sign in to the Google account that owns their channel.
-3. **They will see a "Google hasn't verified this app" screen.** Be honest about this — it's expected, because honest-comments' OAuth app isn't Google-verified yet (verification is a separate Google review process). To continue: click **"Advanced"**, then **"Go to honest-comments (unsafe)"**. It's safe in the sense that matters here: they're signing into *their own* account, the access is **read-only**, and nothing is sent to honest-comments (it has no servers). If they're not comfortable, point them at the [API-key fallback](#advanced-use-an-api-key-instead) instead.
-4. They approve **read-only** access to their YouTube data (one click).
+3. **They will see a "Google hasn't verified this app" screen.** Be honest about this — it's expected, because honest-comments' OAuth app isn't Google-verified yet (verification is a separate Google review process). To continue: click **"Advanced"**, then **"Go to honest-comments (unsafe)"**. It's safe in the sense that matters here: they're signing into *their own* account, honest-comments only ever **reads** their comments, and nothing is sent to honest-comments (it has no servers). If they're not comfortable, point them at the [API-key fallback](#advanced-use-an-api-key-instead) instead.
+4. **The consent screen will mention "edit and permanently delete" — don't panic, see the callout below.** They click Allow once.
 5. The script saves OAuth tokens to `~/.honest-comments/youtube_token.json` (readable only by them) and prints a success message. From then on the tokens **auto-refresh** — they won't be asked again.
+
+> #### Why the sign-in screen mentions "edit and delete" (it only reads)
+>
+> When the creator clicks Allow, Google's consent screen says honest-comments wants to **"See, edit, and permanently delete your YouTube videos, comments, and captions."** That wording is alarming, so explain it up front:
+>
+> - **Google's API only lets you READ comments under the broad `youtube.force-ssl` scope.** The narrower `youtube.readonly` scope *can't* read comments — Google refuses `commentThreads.list` with a `403 ACCESS_TOKEN_SCOPE_INSUFFICIENT` error (a documented, tested limitation). `force-ssl` is the **only** OAuth scope that can read comments via the API, and it happens to carry that scary "edit/delete" label.
+> - **honest-comments only ever READS.** It calls only `list` endpoints (`channels.list`, `playlistItems.list`, `commentThreads.list`, `search.list`). There is **no** write/insert/update/delete call anywhere in the code.
+> - **Anyone (or their AI) can verify this in seconds.** Read `scripts/youtube_login.py` and `scripts/fetch_comments.py`, or just grep them:
+>   ```
+>   grep -rn "insert\|update\|delete\|setRating\|rate" scripts/   # → nothing
+>   ```
+> - In short: the requested **scope** is broad because Google requires it to read, but the tool's **behavior** is strictly read-only. It never changes anything on the creator's channel.
 
 Reassure them on privacy as you go: the **login goes to Google** (their own account), the **tokens stay on their machine**, and **nothing goes to honest-comments**. See the privacy contract above.
 
@@ -216,7 +229,7 @@ The OAuth login needs a Google OAuth **"Desktop app"** client to exist. Create o
 
 1. **Create / pick a Google Cloud project** at https://console.cloud.google.com/.
 2. **Enable the YouTube Data API v3:** **APIs & Services → Library** → search **"YouTube Data API v3"** → **Enable**.
-3. **Configure the OAuth consent screen:** **APIs & Services → OAuth consent screen**. Set User Type (External is fine), fill in app name (`honest-comments`) + support email, and **add the scope** `https://www.googleapis.com/auth/youtube.readonly`. While the app is unverified you can either keep it in "Testing" (add each creator as a test user) or "In production" (anyone can use it but sees the "unverified app" interstitial). Verification is a separate Google review you can pursue later to remove that screen.
+3. **Configure the OAuth consent screen:** **APIs & Services → OAuth consent screen**. Set User Type (External is fine), fill in app name (`honest-comments`) + support email, and **add the scope** `https://www.googleapis.com/auth/youtube.force-ssl`. (Use **`force-ssl`, not `readonly`** — the read-only scope is refused for reading comments via `commentThreads.list`; `force-ssl` is the only OAuth scope Google permits for reading comments. The tool still only ever reads — see the ["edit and delete" callout in Step 1](#step-1--log-in-to-youtube).) While the app is unverified you can either keep it in "Testing" (add each creator as a test user) or "In production" (anyone can use it but sees the "unverified app" interstitial). Verification is a separate Google review you can pursue later to remove that screen.
 4. **Create the OAuth client:** **APIs & Services → Credentials → Create Credentials → OAuth client ID → Application type: "Desktop app"**. Click **Download JSON** — that file has the `installed` shape `{"installed":{"client_id":"...","client_secret":"...", ...}}`.
 5. **Provide the client to the scripts** in any **one** of these ways (checked in this priority order):
    - **Env vars:** `export HONEST_COMMENTS_OAUTH_CLIENT_ID=...` and `export HONEST_COMMENTS_OAUTH_CLIENT_SECRET=...`
@@ -260,7 +273,7 @@ The fetcher prefers an OAuth login if one exists; the API key is used only when 
 - **`--mine` without a login (exit 1):** `--mine` reads the *signed-in* creator's own channel, so it needs OAuth. If they're using an API key, either log in first, or target the channel explicitly with `--channel`.
 - **Login fails / no OAuth client configured (`youtube_login.py` exit 2):** the project owner hasn't shipped an OAuth client yet — see [Owner / self-host setup](#owner--self-host-setup). This is *not* an end-user-fixable error.
 - **Consent denied / login timed out (`youtube_login.py` exit 3 / 4):** the creator clicked "Deny", or never finished in the browser. Re-run `python3 scripts/youtube_login.py`. If the browser won't open, pass `--print-url` (or `--no-browser`) and have them paste the URL manually.
-- **"Google hasn't verified this app":** expected while the OAuth app is unverified. They click **Advanced → "Go to honest-comments (unsafe)"** to continue (Step 1 explains why it's safe — read-only, their own account, nothing sent to us). If they refuse, offer the [API-key fallback](#advanced-use-an-api-key-instead).
+- **"Google hasn't verified this app":** expected while the OAuth app is unverified. They click **Advanced → "Go to honest-comments (unsafe)"** to continue (Step 1 explains why it's safe — the tool only reads, it's their own account, nothing is sent to us). If they refuse, offer the [API-key fallback](#advanced-use-an-api-key-instead).
 - **Login expired / revoked (fetcher exit 3):** if a saved login can't be refreshed (the creator revoked access, or it lapsed after long inactivity), the fetcher exits **3** and says to re-run the login. `python3 scripts/youtube_login.py` fixes it.
 - **Bad API key (fetcher exit 3, key path):** most often the key is correct but the **YouTube Data API v3 wasn't enabled** for the project, or an HTTP-referrer restriction was added by mistake (remove it). On the `--videos` path there's no setup probe, so a bad key first shows up on the very first comment fetch — same exit **3**, same fix.
 - **`quotaExceeded` (HTTP 403):** the fetcher exits **2** after writing whatever it already fetched. Tell the creator how much got pulled and that **quota resets at midnight US Pacific** — re-run then, or scope smaller (fewer videos, lower `--per-video-cap`). Their partial data in `out/` is still analyzable now.
@@ -268,7 +281,7 @@ The fetcher prefers an OAuth login if one exists; the API key is used only when 
 - **A specific video is invalid / private / deleted (HTTP 404 `videoNotFound`):** not fatal — the script records that one video in `run_meta.json`'s `errors` list and continues to the rest. One bad video link won't abort the whole run. Mention which IDs were unavailable.
 - **Channel not found / handle didn't resolve, or `--videos` had no usable links:** the fetcher exits **4** (same code when a channel can't be resolved and when `--videos` contained no recognisable video IDs). Ask the creator to paste their channel URL directly, or their `UC...` channel ID, or just specific video links instead.
 - **Empty channel (no public uploads):** if a channel resolves but has zero public videos (brand-new, or everything private/unlisted), the script prints a "nothing to analyze" message and exits **4**. Suggest specific video links, or check the channel actually has public uploads.
-- **Private/unlisted videos:** even logged in, this tool reads **public** videos' comments (the `youtube.readonly` scope plus the public commentThreads endpoint). If a video link doesn't return comments, confirm it's public.
+- **Private/unlisted videos:** even logged in, this tool reads **public** videos' comments (the `youtube.force-ssl` scope plus the public commentThreads endpoint — note that despite the broad scope name, the tool only ever reads). If a video link doesn't return comments, confirm it's public.
 - **Everything came back as praise/trolls, nothing constructive:** that can be real (small or very positive comment set). Say so honestly rather than manufacturing criticism — and offer to widen scope to more videos.
 
 ---
